@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ChangeEvent } from "react";
+import { Activity, Database, Sparkles } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -93,13 +94,34 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#172554_0%,#020617_45%,#020617_100%)] p-4 text-slate-100">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#0d1b13_0%,#060b14_45%,#04070d_100%)] text-slate-100">
       <Toaster richColors position="top-right" />
 
-      <div className="mx-auto max-w-4xl space-y-4">
-        <Card className="border-amber-400/25 bg-slate-900/80">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-3 py-4 md:px-6 md:py-6">
+        <header className="rounded-xl border border-emerald-400/20 bg-slate-900/75 px-4 py-3 shadow-[0_0_0_1px_rgba(52,211,153,0.08),0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300/80">LootMaster</p>
+              <h1 className="text-2xl font-semibold text-emerald-100">Sistema TSM</h1>
+              <p className="text-sm text-slate-300">Consulta de preco local com o mesmo visual da plataforma.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200 transition hover:border-emerald-300/40 hover:bg-emerald-500/15">
+                <Sparkles className="h-3.5 w-3.5" /> Premium UI
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-slate-950/60 px-3 py-1 text-xs text-slate-300 transition hover:border-emerald-300/35 hover:text-emerald-200">
+                <Database className="h-3.5 w-3.5" /> TSM Data
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-slate-950/60 px-3 py-1 text-xs text-slate-300 transition hover:border-emerald-300/35 hover:text-emerald-200">
+                <Activity className="h-3.5 w-3.5" /> Live Status
+              </span>
+            </div>
+          </div>
+        </header>
+
+        <Card className="rounded-xl border border-emerald-400/20 bg-[linear-gradient(150deg,rgba(15,23,42,0.92),rgba(2,8,23,0.94))] shadow-[0_0_0_1px_rgba(34,197,94,0.08),0_18px_40px_rgba(0,0,0,0.4)]">
           <CardHeader>
-            <CardTitle>Sistema TSM</CardTitle>
+            <CardTitle className="text-emerald-100">Sistema TSM</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-slate-300">
@@ -107,13 +129,14 @@ export default function Page() {
             </p>
 
             <Input
+              className="border-emerald-400/25 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-emerald-400/45"
               placeholder="Itens para consulta (um por linha, virgula ou ponto e virgula)"
               value={namesInput}
               onChange={(event) => setNamesInput(event.target.value)}
             />
 
             <div className="flex flex-wrap items-center gap-2">
-              <label className="cursor-pointer rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800">
+              <label className="cursor-pointer rounded-md border border-emerald-400/25 bg-slate-950/50 px-2 py-1 text-xs text-emerald-100 transition hover:border-emerald-300/45 hover:bg-emerald-500/10">
                 Enviar AppData.lua
                 <input
                   type="file"
@@ -130,23 +153,27 @@ export default function Page() {
               )}
             </div>
 
-            <Button onClick={pullFromTsm} disabled={updating}>
+            <Button
+              className="border border-emerald-300/40 bg-emerald-500 text-slate-950 shadow-[0_0_0_1px_rgba(16,185,129,0.1)] transition hover:bg-emerald-400"
+              onClick={pullFromTsm}
+              disabled={updating}
+            >
               {updating ? "Puxando dados do TSM..." : "Puxar dados do TSM"}
             </Button>
 
-            {status ? <p className="text-sm text-slate-300">{status}</p> : null}
+            {status ? <p className="text-sm text-emerald-100/90">{status}</p> : null}
           </CardContent>
         </Card>
 
         {results.length > 0 ? (
-          <Card>
+          <Card className="rounded-xl border border-emerald-400/20 bg-[linear-gradient(160deg,rgba(15,23,42,0.88),rgba(2,8,23,0.94))] shadow-[0_0_0_1px_rgba(52,211,153,0.06),0_14px_34px_rgba(0,0,0,0.35)]">
             <CardHeader>
-              <CardTitle>Resultado da Consulta</CardTitle>
+              <CardTitle className="text-emerald-100">Resultado da Consulta</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-auto rounded-md border border-slate-700/70">
+              <div className="overflow-auto rounded-md border border-emerald-400/15">
                 <table className="w-full min-w-[640px] text-sm">
-                  <thead className="bg-slate-900/80 text-slate-300">
+                  <thead className="bg-slate-900/90 text-emerald-100/90">
                     <tr>
                       <th className="px-3 py-2 text-left">Item</th>
                       <th className="px-3 py-2 text-left">Item ID</th>
@@ -156,7 +183,7 @@ export default function Page() {
                   </thead>
                   <tbody>
                     {results.map((row) => (
-                      <tr key={row.name} className="border-t border-slate-700/60">
+                      <tr key={row.name} className="border-t border-emerald-400/10 transition hover:bg-emerald-500/5">
                         <td className="px-3 py-2">{row.name}</td>
                         <td className="px-3 py-2">{row.itemId ?? "-"}</td>
                         <td className="px-3 py-2">{row.price}</td>
