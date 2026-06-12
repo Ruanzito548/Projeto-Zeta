@@ -576,9 +576,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   return (
     <div className="space-y-7">
       <Card className="overflow-hidden">
-        <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(145deg,rgba(6,15,17,0.92),rgba(4,10,16,0.95))]">
+        <CardHeader className="border-b border-green-500/20 bg-[linear-gradient(145deg,rgba(6,15,17,0.92),rgba(4,10,16,0.95))]">
           <CardTitle className="text-xl md:text-2xl">Central de Operacoes da Expansao</CardTitle>
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-green-200/70">
             Navegacao modular para analise financeira, importacao de itens e catalogo de reagentes.
           </p>
         </CardHeader>
@@ -593,7 +593,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 className={
                   activeTab === tab
                     ? "h-12 justify-center text-sm uppercase tracking-[0.16em]"
-                    : "h-12 justify-center border-emerald-500/20 text-sm uppercase tracking-[0.16em]"
+                    : "h-12 justify-center border-green-500/20 text-sm uppercase tracking-[0.16em]"
                 }
               >
                 {tabLabel(tab)}
@@ -601,7 +601,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             ))}
           </div>
 
-          <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-slate-300">
+          <p className="rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-200/70">
             Estrutura visual premium com foco em legibilidade de margem, decisao rapida e escala para novos modulos.
           </p>
         </CardContent>
@@ -609,9 +609,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
       {activeTab === "reagents" ? (
         <Card className="overflow-hidden">
-          <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
+          <CardHeader className="border-b border-green-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
             <CardTitle className="text-2xl">Catalogo de Precos</CardTitle>
-            <p className="text-sm text-slate-300">Gestao de reagentes com fontes de custo, valor fixo e rastreio por item.</p>
+            <p className="text-sm text-green-200/70">Gestao de reagentes com fontes de custo, valor fixo e rastreio por item.</p>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
             <div className="flex flex-wrap items-center gap-3">
@@ -619,7 +619,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
               </Button>
-              <label className="cursor-pointer rounded-xl border border-emerald-500/35 bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.18)_inset] hover:border-emerald-400/55">
+              <label className="cursor-pointer rounded-xl border border-green-500/35 bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-green-100 shadow-[0_0_0_1px_rgba(34,197,94,0.18)_inset] hover:border-green-400/55">
                 Enviar AppData.lua desta versao
                 <input
                   type="file"
@@ -633,14 +633,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               </Badge>
             </div>
 
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-green-600">
               {appDataFileName
                 ? `Arquivo ativo nesta versao: ${appDataFileName}`
                 : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
             </p>
 
-            <div className="space-y-3 rounded-2xl border border-emerald-500/30 bg-[linear-gradient(150deg,rgba(5,13,15,0.92),rgba(6,11,20,0.9))] p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.12)_inset]">
-              <p className="text-base font-semibold text-emerald-100">Adicionar Reagente Manual</p>
+            <div className="space-y-3 rounded-2xl border border-green-500/30 bg-[linear-gradient(150deg,rgba(5,13,15,0.92),rgba(6,11,20,0.9))] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+              <p className="text-base font-semibold text-green-100">Adicionar Reagente Manual</p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Input
                   value={importReagentInput}
@@ -652,13 +652,13 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   {importingReagent ? "Importando..." : "Importar"}
                 </Button>
               </div>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-green-600">
                 Adicione reagentes manualmente para rastrear preços adicionais além do catálogo automático.
               </p>
             </div>
 
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-emerald-500/55" />
+              <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-green-500/55" />
               <Input
                 className="pl-10"
                 value={query}
@@ -667,9 +667,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               />
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-emerald-500/25 bg-black/20">
+            <div className="overflow-x-auto rounded-2xl border border-green-500/25 bg-black/40">
               <table className="w-full min-w-[1280px] text-sm">
-                <thead className="bg-[linear-gradient(180deg,rgba(6,16,19,0.98),rgba(3,9,13,0.98))] text-xs uppercase tracking-[0.11em] text-emerald-200/90">
+                <thead className="bg-[linear-gradient(180deg,rgba(6,16,19,0.98),rgba(3,9,13,0.98))] text-xs uppercase tracking-[0.11em] text-green-300/90">
                   <tr>
                     <th className="px-4 py-3 text-left">Item</th>
                     <th className="px-4 py-3 text-left">ID</th>
@@ -685,15 +685,15 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 </thead>
                 <tbody>
                   {filteredReagents.map((entry) => (
-                    <tr key={entry.itemId} className="border-t border-emerald-500/12 transition-colors hover:bg-emerald-500/5">
+                    <tr key={entry.itemId} className="border-t border-green-500/15 transition-colors hover:bg-green-500/5">
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <img src={entry.icon} alt={entry.name} className="h-10 w-10 rounded-lg border border-emerald-500/35" />
-                          <span className="font-semibold text-emerald-50">{entry.name}</span>
+                          <img src={entry.icon} alt={entry.name} className="h-10 w-10 rounded-lg border border-green-500/35" />
+                          <span className="font-semibold text-green-50">{entry.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4 font-medium text-slate-200">{entry.itemId}</td>
-                      <td className="px-4 py-4 capitalize text-slate-300">{entry.quality}</td>
+                      <td className="px-4 py-4 font-medium text-green-100">{entry.itemId}</td>
+                      <td className="px-4 py-4 capitalize text-green-200/70">{entry.quality}</td>
                       <td className="px-4 py-4">
                         <Select
                           value={entry.priceSource}
@@ -707,20 +707,20 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           ))}
                         </Select>
                       </td>
-                      <td className="max-w-sm px-4 py-4 text-slate-300">{entry.source}</td>
-                      <td className="px-4 py-4 font-medium text-sky-200">{formatMoney(entry.tsmPrice)}</td>
+                      <td className="max-w-sm px-4 py-4 text-green-200/70">{entry.source}</td>
+                      <td className="px-4 py-4 font-medium text-green-200">{formatMoney(entry.tsmPrice)}</td>
                       <td className="px-4 py-4">
                         {entry.calculatedPrice === null ? (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-green-700">-</span>
                         ) : (
-                          <span className="font-semibold text-emerald-300">{formatMoney(entry.calculatedPrice)}</span>
+                          <span className="font-semibold text-green-400">{formatMoney(entry.calculatedPrice)}</span>
                         )}
                       </td>
                       <td className="px-4 py-4">
                         {entry.fixedPrice && entry.fixedPrice > 0 ? (
-                          <span className="font-semibold text-emerald-200">{formatMoney(entry.fixedPrice)}</span>
+                          <span className="font-semibold text-green-300">{formatMoney(entry.fixedPrice)}</span>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-green-700">-</span>
                         )}
                       </td>
                       <td className="px-4 py-4">
@@ -738,7 +738,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           href={entry.wowheadUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.09em] text-emerald-200 hover:border-emerald-400/60 hover:text-emerald-100"
+                          className="inline-flex rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.09em] text-green-300 hover:border-green-400/60 hover:text-green-100"
                         >
                           Abrir
                         </a>
@@ -747,7 +747,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   ))}
                   {filteredReagents.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-12 text-center text-base text-slate-400" colSpan={10}>
+                      <td className="px-4 py-12 text-center text-base text-green-600" colSpan={10}>
                         Nenhum item encontrado.
                       </td>
                     </tr>
@@ -761,9 +761,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
       {activeTab === "import" ? (
         <Card className="overflow-hidden">
-          <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
+          <CardHeader className="border-b border-green-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
             <CardTitle className="text-2xl">Importar Item</CardTitle>
-            <p className="text-sm text-slate-300">Entrada manual por URL ou Item ID com captura automatica de dados economicos.</p>
+            <p className="text-sm text-green-200/70">Entrada manual por URL ou Item ID com captura automatica de dados economicos.</p>
           </CardHeader>
           <CardContent className="space-y-5 pt-6">
             <Input
@@ -775,7 +775,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             <Button onClick={importItem} disabled={importingItem} className="h-12 w-full sm:w-auto">
               {importingItem ? "Importando..." : "Importar e Salvar"}
             </Button>
-            <p className="rounded-xl border border-emerald-500/20 bg-black/20 px-4 py-3 text-sm text-slate-300">
+            <p className="rounded-xl border border-green-500/20 bg-black/40 px-4 py-3 text-sm text-green-200/70">
               A importacao busca automaticamente nome, icone, qualidade, receita, quantidade produzida,
               profissao e dados de disenchant quando existirem.
             </p>
@@ -785,14 +785,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
       {activeTab === "dashboard" ? (
         <Card className="overflow-hidden">
-          <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
+          <CardHeader className="border-b border-green-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
             <CardTitle className="text-2xl">Dashboard Financeiro</CardTitle>
-            <p className="text-sm text-slate-300">Painel premium de margem por craft, venda e disenchant com comparativo de melhor opcao.</p>
+            <p className="text-sm text-green-200/70">Painel premium de margem por craft, venda e disenchant com comparativo de melhor opcao.</p>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
-            <div className="overflow-x-auto rounded-2xl border border-emerald-500/25 bg-black/20">
+            <div className="overflow-x-auto rounded-2xl border border-green-500/25 bg-black/40">
               <table className="w-full min-w-[1180px] text-sm">
-                <thead className="bg-[linear-gradient(180deg,rgba(6,16,19,0.98),rgba(3,9,13,0.98))] text-xs uppercase tracking-[0.11em] text-emerald-200/90">
+                <thead className="bg-[linear-gradient(180deg,rgba(6,16,19,0.98),rgba(3,9,13,0.98))] text-xs uppercase tracking-[0.11em] text-green-300/90">
                   <tr>
                     <th className="px-4 py-3 text-left"></th>
                     <th className="px-4 py-3 text-left">Item</th>
@@ -813,7 +813,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
 
                     return (
-                      <tr key={row.itemId} className="border-t border-emerald-500/12 transition-colors hover:bg-emerald-500/5">
+                      <tr key={row.itemId} className="border-t border-green-500/15 transition-colors hover:bg-green-500/5">
                           <td className="px-4 py-4">
                             <Button
                               type="button"
@@ -832,21 +832,21 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-3">
-                              <img src={row.icon} alt={row.name} className="h-11 w-11 rounded-lg border border-emerald-500/35" />
-                              <span className="font-semibold text-emerald-50">{row.name}</span>
+                              <img src={row.icon} alt={row.name} className="h-11 w-11 rounded-lg border border-green-500/35" />
+                              <span className="font-semibold text-green-50">{row.name}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-slate-300">{row.profession}</td>
-                          <td className="px-4 py-4 font-semibold text-sky-200">{formatMoney(row.craftCost)}</td>
-                          <td className="px-4 py-4 font-medium text-slate-200">{formatMoney(row.auctionPrice)}</td>
-                          <td className="px-4 py-4 font-medium text-slate-300">{formatMoney(row.vendorPrice)}</td>
-                          <td className={`px-4 py-4 font-semibold ${row.auctionProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          <td className="px-4 py-4 text-green-200/70">{row.profession}</td>
+                          <td className="px-4 py-4 font-semibold text-green-200">{formatMoney(row.craftCost)}</td>
+                          <td className="px-4 py-4 font-medium text-green-100">{formatMoney(row.auctionPrice)}</td>
+                          <td className="px-4 py-4 font-medium text-green-200/70">{formatMoney(row.vendorPrice)}</td>
+                          <td className={`px-4 py-4 font-semibold ${row.auctionProfit >= 0 ? "text-green-400" : "text-rose-300"}`}>
                             {formatMoney(Math.max(0, row.auctionProfit))}
                           </td>
-                          <td className={`px-4 py-4 font-semibold ${row.disenchantProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          <td className={`px-4 py-4 font-semibold ${row.disenchantProfit >= 0 ? "text-green-400" : "text-rose-300"}`}>
                             {formatMoney(Math.max(0, row.disenchantProfit))}
                           </td>
-                          <td className={`px-4 py-4 font-semibold ${row.npcProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          <td className={`px-4 py-4 font-semibold ${row.npcProfit >= 0 ? "text-green-400" : "text-rose-300"}`}>
                             {formatMoney(Math.max(0, row.npcProfit))}
                           </td>
                           <td className="px-4 py-4">
@@ -878,44 +878,44 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     }
 
                     return (
-                      <tr key={`expanded-${row.itemId}`} className="border-t border-emerald-500/14 bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
+                      <tr key={`expanded-${row.itemId}`} className="border-t border-green-500/15 bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
                         <td colSpan={11} className="px-6 py-6">
                           <div className="grid gap-5 md:grid-cols-2">
-                            <div className="rounded-2xl border border-emerald-500/20 bg-black/25 p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.12)_inset]">
-                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-emerald-200">Receita</p>
+                            <div className="rounded-2xl border border-green-500/20 bg-black/40 p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-green-300">Receita</p>
                               <div className="space-y-3">
                                 {craft.recipe.map((component) => {
                                   const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
                                   const unit = reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0;
                                   return (
-                                    <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3">
+                                    <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-green-500/15 bg-green-500/5 p-3">
                                       <div className="flex items-center gap-3">
                                         <img
                                           src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
                                           alt={component.name}
-                                          className="h-8 w-8 rounded-md border border-emerald-500/25"
+                                          className="h-8 w-8 rounded-md border border-green-500/25"
                                         />
-                                        <span className="text-slate-200">{component.quantity}x {component.name}</span>
+                                        <span className="text-green-100">{component.quantity}x {component.name}</span>
                                       </div>
-                                      <span className="font-semibold text-sky-200">{formatMoney(component.quantity * unit)}</span>
+                                      <span className="font-semibold text-green-200">{formatMoney(component.quantity * unit)}</span>
                                     </div>
                                   );
                                 })}
                               </div>
                             </div>
-                            <div className="rounded-2xl border border-sky-500/20 bg-black/25 p-4 shadow-[0_0_0_1px_rgba(14,165,233,0.12)_inset]">
-                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-sky-200">Disenchant</p>
+                            <div className="rounded-2xl border border-green-500/20 bg-black/40 p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-green-200">Disenchant</p>
                               <div className="space-y-3">
                                 {craft.disenchant.length === 0 ? (
-                                  <p className="text-sm text-slate-400">Sem dados de disenchant.</p>
+                                  <p className="text-sm text-green-600">Sem dados de disenchant.</p>
                                 ) : (
                                   craft.disenchant.map((entry) => (
-                                    <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-sky-500/18 bg-sky-500/5 p-3">
+                                    <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-green-400/20 bg-green-500/5 p-3">
                                       <div className="flex items-center gap-3">
-                                        <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-sky-500/20" />
-                                        <span className="text-slate-200">{entry.name}</span>
+                                        <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-green-500/20" />
+                                        <span className="text-green-100">{entry.name}</span>
                                       </div>
-                                      <p className="mt-1.5 text-xs text-slate-300">
+                                      <p className="mt-1.5 text-xs text-green-200/70">
                                         Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
                                       </p>
                                     </div>
@@ -930,7 +930,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   })}
                   {dashboardRows.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-base text-slate-400">
+                      <td colSpan={11} className="px-4 py-12 text-center text-base text-green-600">
                         Nenhum item importado ainda. Use a aba Importar Item.
                       </td>
                     </tr>
