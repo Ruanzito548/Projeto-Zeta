@@ -332,6 +332,8 @@ export async function importReagentFromWowhead(itemId: number, version: WowVersi
     quality: parseQuality(xml),
     wowheadUrl: `${buildWowheadRoot(version)}/item=${itemId}`,
     source: buildSourceLabel(recipe),
+    priceSource: "MATERIA_PRIMA",
+    fixedPrice: null,
     tsmPrice: 0,
     calculatedPrice: null,
     recipe,

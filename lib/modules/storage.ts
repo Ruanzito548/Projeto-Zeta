@@ -1,9 +1,28 @@
-import type { ModuleSnapshot } from "@/lib/modules/types";
+import type { ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
 import { DEFAULT_SNAPSHOT } from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
 
 function storageKey(version: WowVersion): string {
   return `lootmaster-v2-${version}`;
+}
+
+function normalizePriceSource(value: unknown): PriceSource {
+  if (value === "CRAFTING" || value === "NPC" || value === "MATERIA_PRIMA") {
+    return value;
+  }
+
+  return "MATERIA_PRIMA";
+}
+
+function normalizeReagent(entry: ReagentEntry): ReagentEntry {
+  return {
+    ...entry,
+    priceSource: normalizePriceSource((entry as ReagentEntry & { priceSource?: unknown }).priceSource),
+    fixedPrice:
+      typeof entry.fixedPrice === "number" && Number.isFinite(entry.fixedPrice) && entry.fixedPrice > 0
+        ? Math.round(entry.fixedPrice)
+        : null,
+  };
 }
 
 export function loadSnapshot(version: WowVersion): ModuleSnapshot {
@@ -22,9 +41,12 @@ export function loadSnapshot(version: WowVersion): ModuleSnapshot {
       return DEFAULT_SNAPSHOT(version);
     }
 
+    const normalizedReagents = parsed.reagents.map((entry) => normalizeReagent(entry));
+
     return {
       ...DEFAULT_SNAPSHOT(version),
       ...parsed,
+      reagents: normalizedReagents,
       version,
     };
   } catch {

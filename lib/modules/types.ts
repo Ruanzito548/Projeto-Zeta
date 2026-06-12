@@ -14,6 +14,8 @@ export type Profession =
 
 export type Quality = "poor" | "common" | "uncommon" | "rare" | "epic" | "legendary";
 
+export type PriceSource = "MATERIA_PRIMA" | "CRAFTING" | "NPC";
+
 export interface RecipeComponent {
   itemId: number;
   name: string;
@@ -28,6 +30,8 @@ export interface ReagentEntry {
   quality: Quality;
   wowheadUrl: string;
   source: string;
+  priceSource: PriceSource;
+  fixedPrice: number | null;
   tsmPrice: number;
   calculatedPrice: number | null;
   recipe: RecipeComponent[];

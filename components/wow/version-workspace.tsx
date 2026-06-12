@@ -8,12 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import {
   computeDashboardRows,
   applyCalculatedReagentPrices,
 } from "@/lib/modules/pricing-engine";
 import { loadSnapshot, saveSnapshot } from "@/lib/modules/storage";
-import type { ImportedCraftItem, ModuleSnapshot, ReagentEntry } from "@/lib/modules/types";
+import type { ImportedCraftItem, ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
 import { DEFAULT_SNAPSHOT } from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
 
@@ -25,6 +26,12 @@ type TsmResponse = {
   results?: Array<{ name: string; itemId: number | null; price: number; ok: boolean }>;
   error?: string;
 };
+
+const SOURCE_OPTIONS: Array<{ value: PriceSource; label: string }> = [
+  { value: "MATERIA_PRIMA", label: "Materia prima" },
+  { value: "CRAFTING", label: "Crafting" },
+  { value: "NPC", label: "NPC" },
+];
 
 function wowheadItemUrl(version: WowVersion, itemId: number): string {
   const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
@@ -51,6 +58,8 @@ function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): 
       tsmPrice: prev.tsmPrice > 0 ? prev.tsmPrice : entry.tsmPrice,
       calculatedPrice: prev.calculatedPrice ?? entry.calculatedPrice,
       source: prev.source || entry.source,
+      priceSource: prev.priceSource,
+      fixedPrice: prev.fixedPrice,
       recipe: prev.recipe.length > 0 ? prev.recipe : entry.recipe,
       updatedAt: new Date().toISOString(),
     });
@@ -67,6 +76,8 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     quality: item.quality,
     wowheadUrl: item.wowheadUrl || wowheadItemUrl(version, item.itemId),
     source: "Item importado para analise de lucro.",
+    priceSource: item.recipe.length > 0 ? "CRAFTING" : "MATERIA_PRIMA",
+    fixedPrice: null,
     tsmPrice: item.auctionPrice,
     calculatedPrice: null,
     recipe: item.recipe,
@@ -80,6 +91,8 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     quality: "uncommon",
     wowheadUrl: wowheadItemUrl(version, entry.itemId),
     source: `Resultado de disenchant de ${item.name}.`,
+    priceSource: "MATERIA_PRIMA",
+    fixedPrice: null,
     tsmPrice: 0,
     calculatedPrice: null,
     recipe: [],
@@ -371,6 +384,67 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
+  function updatePriceSource(itemId: number, source: PriceSource) {
+    setSnapshot((prev) => {
+      const nextReagents = prev.reagents.map<ReagentEntry>((entry) => {
+        if (entry.itemId !== itemId) {
+          return entry;
+        }
+
+        return {
+          ...entry,
+          priceSource: source,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      return {
+        ...prev,
+        reagents: applyCalculatedReagentPrices(nextReagents),
+      };
+    });
+  }
+
+  function addFixedPrice(itemId: number, itemName: string, currentValue: number | null) {
+    const raw = window.prompt(
+      `Informe o preco fixo (em copper) para ${itemName}:`,
+      currentValue && currentValue > 0 ? String(currentValue) : "",
+    );
+
+    if (raw === null) {
+      return;
+    }
+
+    const parsed = Number(raw.trim());
+
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toast.error("Informe um valor numerico maior que zero.");
+      return;
+    }
+
+    setSnapshot((prev) => {
+      const nextReagents = prev.reagents.map<ReagentEntry>((entry) => {
+        if (entry.itemId !== itemId) {
+          return entry;
+        }
+
+        return {
+          ...entry,
+          fixedPrice: Math.round(parsed),
+          priceSource: "NPC" as const,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      return {
+        ...prev,
+        reagents: applyCalculatedReagentPrices(nextReagents),
+      };
+    });
+
+    toast.success("Preco fixo adicionado com sucesso.");
+  }
+
   function removeCraftItem(itemId: number, itemName: string) {
     const confirmed = window.confirm(`Excluir ${itemName} do Dashboard?`);
 
@@ -459,15 +533,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             </div>
 
             <div className="overflow-x-auto rounded-md border border-amber-500/20">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[1280px] text-sm">
                 <thead className="bg-slate-950/70">
                   <tr>
                     <th className="px-3 py-2 text-left">Item</th>
                     <th className="px-3 py-2 text-left">ID</th>
                     <th className="px-3 py-2 text-left">Qualidade</th>
                     <th className="px-3 py-2 text-left">Fonte</th>
+                    <th className="px-3 py-2 text-left">Origem</th>
                     <th className="px-3 py-2 text-left">Preco TSM</th>
                     <th className="px-3 py-2 text-left">Preco Calculado</th>
+                    <th className="px-3 py-2 text-left">Valor Fixado</th>
+                    <th className="px-3 py-2 text-left">Acao</th>
                     <th className="px-3 py-2 text-left">Wowhead</th>
                   </tr>
                 </thead>
@@ -482,6 +559,19 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                       </td>
                       <td className="px-3 py-2">{entry.itemId}</td>
                       <td className="px-3 py-2 capitalize">{entry.quality}</td>
+                      <td className="px-3 py-2">
+                        <Select
+                          value={entry.priceSource}
+                          onChange={(event) => updatePriceSource(entry.itemId, event.target.value as PriceSource)}
+                          className="h-8 min-w-[160px]"
+                        >
+                          {SOURCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </td>
                       <td className="max-w-sm px-3 py-2 text-slate-300">{entry.source}</td>
                       <td className="px-3 py-2">{formatMoney(entry.tsmPrice)}</td>
                       <td className="px-3 py-2">
@@ -492,6 +582,22 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                         )}
                       </td>
                       <td className="px-3 py-2">
+                        {entry.fixedPrice && entry.fixedPrice > 0 ? (
+                          <span className="text-amber-200">{formatMoney(entry.fixedPrice)}</span>
+                        ) : (
+                          <span className="text-slate-500">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => addFixedPrice(entry.itemId, entry.name, entry.fixedPrice)}
+                        >
+                          Adicionar preco fixo
+                        </Button>
+                      </td>
+                      <td className="px-3 py-2">
                         <a href={entry.wowheadUrl} target="_blank" rel="noreferrer" className="text-amber-300 underline">
                           Abrir
                         </a>
@@ -500,7 +606,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   ))}
                   {filteredReagents.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
+                      <td className="px-3 py-8 text-center text-slate-400" colSpan={10}>
                         Nenhum item encontrado.
                       </td>
                     </tr>

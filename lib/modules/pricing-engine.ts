@@ -1,9 +1,18 @@
 import type {
   DashboardRow,
   ImportedCraftItem,
+  PriceSource,
   ReagentEntry,
   RecipeComponent,
 } from "@/lib/modules/types";
+
+function sanitizePrice(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return value;
+}
 
 function expectedDisenchantValue(item: ImportedCraftItem, priceById: Map<number, number>): number {
   return item.disenchant.reduce((total, row) => {
@@ -16,6 +25,28 @@ function expectedDisenchantValue(item: ImportedCraftItem, priceById: Map<number,
 function buildRecipeCostResolver(reagents: ReagentEntry[]) {
   const byId = new Map<number, ReagentEntry>(reagents.map((entry) => [entry.itemId, entry]));
   const memo = new Map<number, number>();
+
+  function resolveBySource(
+    source: PriceSource,
+    reagent: ReagentEntry,
+    visited: Set<number>,
+  ): number {
+    if (source === "NPC") {
+      const fixed = sanitizePrice(reagent.fixedPrice);
+      return fixed > 0 ? fixed : sanitizePrice(reagent.tsmPrice);
+    }
+
+    if (source === "CRAFTING") {
+      if (reagent.recipe.length === 0) {
+        return sanitizePrice(reagent.tsmPrice);
+      }
+
+      const recipeCost = costFromRecipe(reagent.recipe, visited);
+      return recipeCost > 0 ? recipeCost : sanitizePrice(reagent.tsmPrice);
+    }
+
+    return sanitizePrice(reagent.tsmPrice);
+  }
 
   function costFromRecipe(recipe: RecipeComponent[], visited: Set<number>): number {
     return recipe.reduce((total, component) => {
@@ -36,7 +67,7 @@ function buildRecipeCostResolver(reagents: ReagentEntry[]) {
     }
 
     if (visited.has(itemId)) {
-      return byId.get(itemId)?.tsmPrice ?? 0;
+      return sanitizePrice(byId.get(itemId)?.tsmPrice);
     }
 
     const reagent = byId.get(itemId);
@@ -46,9 +77,7 @@ function buildRecipeCostResolver(reagents: ReagentEntry[]) {
 
     visited.add(itemId);
 
-    const value = reagent.recipe.length > 0
-      ? costFromRecipe(reagent.recipe, visited)
-      : reagent.tsmPrice;
+    const value = resolveBySource(reagent.priceSource, reagent, visited);
 
     const finalCost = Number.isFinite(value) && value > 0 ? value : 0;
     memo.set(itemId, finalCost);
@@ -64,16 +93,18 @@ export function applyCalculatedReagentPrices(reagents: ReagentEntry[]): ReagentE
   const resolveCost = buildRecipeCostResolver(reagents);
 
   return reagents.map((entry) => {
-    if (entry.recipe.length === 0) {
+    if (entry.priceSource === "MATERIA_PRIMA") {
       return {
         ...entry,
         calculatedPrice: null,
       };
     }
 
+    const value = resolveCost(entry.itemId);
+
     return {
       ...entry,
-      calculatedPrice: resolveCost(entry.itemId),
+      calculatedPrice: value > 0 ? value : null,
     };
   });
 }
