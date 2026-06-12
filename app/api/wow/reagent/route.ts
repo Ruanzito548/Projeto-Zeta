@@ -1,4 +1,4 @@
-import { importReagentFromWowhead } from "@/lib/modules/wowhead-service";
+import { getWowheadItemIdFromInput, importReagentFromWowhead } from "@/lib/modules/wowhead-service";
 import { isWowVersion } from "@/lib/wow/versions";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -17,6 +17,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const reagent = await importReagentFromWowhead(itemId, version);
+    return NextResponse.json({ reagent });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Erro ao importar reagente.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = (await request.json()) as { version?: string; query?: string };
+    const version = body.version?.trim() ?? "";
+    const query = body.query?.trim() ?? "";
+
+    if (!isWowVersion(version)) {
+      return NextResponse.json({ error: "Versao invalida." }, { status: 400 });
+    }
+
+    const itemId = await getWowheadItemIdFromInput(query);
     const reagent = await importReagentFromWowhead(itemId, version);
     return NextResponse.json({ reagent });
   } catch (error) {

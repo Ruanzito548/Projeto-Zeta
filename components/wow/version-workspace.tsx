@@ -320,31 +320,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     setImportingReagent(true);
 
     try {
-      let itemId: number | null = null;
-
-      // Try to parse as number first
-      const asNumber = parseInt(importReagentInput.trim(), 10);
-      if (!isNaN(asNumber) && asNumber > 0) {
-        itemId = asNumber;
-      } else {
-        // Try to extract from URL
-        const match = importReagentInput.match(/[?&]item=(\d+)/);
-        if (match) {
-          itemId = parseInt(match[1], 10);
-        }
-      }
-
-      if (!itemId || itemId <= 0) {
-        throw new Error("Item ID inválido. Informe um ID numérico ou URL do Wowhead.");
-      }
-
-      const response = await fetch(
-        `/api/wow/reagent?version=${version}&itemId=${itemId}`,
-        { cache: "no-store" },
-      );
+      const response = await fetch("/api/wow/reagent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version,
+          query: importReagentInput,
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error("Reagente não encontrado no Wowhead.");
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? "Reagente nao encontrado no Wowhead.");
       }
 
       const payload = (await response.json()) as { reagent?: ReagentEntry };
