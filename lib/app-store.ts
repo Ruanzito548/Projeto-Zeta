@@ -17,6 +17,7 @@ import {
 import { loadSnapshotByUser, saveSnapshotByUser } from "@/lib/indexeddb";
 import { loadCloudSnapshotByUser, saveCloudSnapshotByUser } from "@/lib/firestore-snapshot";
 import { isFirebaseConfigured } from "@/lib/firebase";
+import { STARTER_REAGENTS } from "@/lib/reagent-catalog";
 import { nowIso, uid } from "@/lib/utils";
 
 type AppState = AppSnapshot & {
@@ -39,6 +40,7 @@ type AppState = AppSnapshot & {
   setReagentPriceLocked: (id: string, locked: boolean) => void;
   setReagentIcon: (id: string, iconUrl: string) => void;
   setReagentCraftRecipe: (id: string, craftFromReagentId: string, craftFromQuantity: number) => void;
+  importStarterReagents: () => number;
   touchReagentUsage: (reagentId: string) => void;
   createCraft: (payload: Omit<CraftItem, "id" | "createdAt" | "updatedAt" | "favorite" | "archived" | "tags"> & { tags?: CraftTag[] }) => string;
   updateCraft: (id: string, payload: Partial<CraftItem>) => void;
@@ -81,6 +83,52 @@ function hasSnapshotData(snapshot: AppSnapshot): boolean {
   );
 }
 
+function mergeStarterReagents(reagents: Reagent[]): { next: Reagent[]; addedCount: number } {
+  const knownNames = new Set(reagents.map((row) => row.name.trim().toLowerCase()));
+  const additions: Reagent[] = [];
+
+  for (const row of STARTER_REAGENTS) {
+    const key = row.name.trim().toLowerCase();
+
+    if (!key || knownNames.has(key)) {
+      continue;
+    }
+
+    knownNames.add(key);
+    additions.push({
+      id: uid("reag"),
+      name: row.name,
+      iconUrl: row.iconUrl,
+      profession: row.profession,
+      currentPrice: row.currentPrice,
+      priceLocked: false,
+      updatedAt: nowIso(),
+      usageCount: 0,
+    });
+  }
+
+  return {
+    next: [...reagents, ...additions],
+    addedCount: additions.length,
+  };
+}
+
+function seedSnapshotIfEmpty(snapshot: AppSnapshot): { snapshot: AppSnapshot; seeded: boolean } {
+  if (hasSnapshotData(snapshot)) {
+    return { snapshot, seeded: false };
+  }
+
+  const seeded = mergeStarterReagents(snapshot.reagents);
+
+  return {
+    snapshot: {
+      ...snapshot,
+      reagents: seeded.next,
+    },
+    seeded: seeded.addedCount > 0,
+  };
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...defaultSnapshot,
   hydrated: false,
@@ -92,42 +140,54 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   init: async (userId) => {
     const resolvedUserId = userId.trim() || "guest";
-    const localSnapshot = await loadSnapshotByUser(resolvedUserId);
+    const localSnapshot = seedSnapshotIfEmpty(await loadSnapshotByUser(resolvedUserId));
 
     if (resolvedUserId === "guest" || !isFirebaseConfigured) {
       set({
-        ...localSnapshot,
+        ...localSnapshot.snapshot,
         activeUserId: resolvedUserId,
         hydrated: true,
       });
+
+      if (localSnapshot.seeded) {
+        await saveSnapshotByUser(localSnapshot.snapshot, resolvedUserId);
+      }
+
       return;
     }
 
     try {
-      const cloudSnapshot = await loadCloudSnapshotByUser(resolvedUserId);
+      const cloudSnapshotRaw = await loadCloudSnapshotByUser(resolvedUserId);
+      const cloudSnapshot = cloudSnapshotRaw ? seedSnapshotIfEmpty(cloudSnapshotRaw) : null;
 
       if (cloudSnapshot) {
         set({
-          ...cloudSnapshot,
+          ...cloudSnapshot.snapshot,
           activeUserId: resolvedUserId,
           hydrated: true,
         });
-        await saveSnapshotByUser(cloudSnapshot, resolvedUserId);
+
+        await saveSnapshotByUser(cloudSnapshot.snapshot, resolvedUserId);
+
+        if (cloudSnapshot.seeded) {
+          await saveCloudSnapshotByUser(cloudSnapshot.snapshot, resolvedUserId);
+        }
+
         return;
       }
 
       set({
-        ...localSnapshot,
+        ...localSnapshot.snapshot,
         activeUserId: resolvedUserId,
         hydrated: true,
       });
 
-      if (hasSnapshotData(localSnapshot)) {
-        await saveCloudSnapshotByUser(localSnapshot, resolvedUserId);
+      if (hasSnapshotData(localSnapshot.snapshot)) {
+        await saveCloudSnapshotByUser(localSnapshot.snapshot, resolvedUserId);
       }
     } catch {
       set({
-        ...localSnapshot,
+        ...localSnapshot.snapshot,
         activeUserId: resolvedUserId,
         hydrated: true,
       });
@@ -294,6 +354,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
 
     get().persist();
+  },
+
+  importStarterReagents: () => {
+    const merged = mergeStarterReagents(get().reagents);
+
+    if (merged.addedCount === 0) {
+      return 0;
+    }
+
+    set((state) => ({
+      reagents: merged.next,
+      history: pushHistory(
+        state.history,
+        `${merged.addedCount} reagentes base importados.`,
+        "CRAFT_UPDATED",
+      ),
+    }));
+
+    get().persist();
+    return merged.addedCount;
   },
 
   touchReagentUsage: (reagentId) => {

@@ -140,6 +140,7 @@ export default function Page() {
     setReagentPriceLocked,
     setReagentIcon,
     setReagentCraftRecipe,
+    importStarterReagents,
     createCraft,
     updateCraft,
     duplicateCraft,
@@ -1711,6 +1712,30 @@ export default function Page() {
                   onClick={() => setManualReagentListMode((prev) => !prev)}
                 >
                   {manualReagentListMode ? "Manual" : "Automatico"}
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-slate-950/50 p-3">
+                <div>
+                  <p className="text-sm font-medium text-emerald-200">Catalogo inicial de reagentes</p>
+                  <p className="text-xs text-slate-400">
+                    Importa uma base pronta com reagentes comuns de Classic/TBC sem duplicar os que ja existem.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const added = importStarterReagents();
+
+                    if (added === 0) {
+                      toast.message("Nenhum reagente novo para importar.");
+                      return;
+                    }
+
+                    toast.success(`${added} reagentes importados para a base.`);
+                  }}
+                >
+                  <Sparkles className="mr-1 h-4 w-4" /> Importar base inicial
                 </Button>
               </div>
 
