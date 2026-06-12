@@ -744,18 +744,11 @@ export default function Page() {
       }
 
       const reagentLines: Array<{ id: string; reagentId: string; quantity: number }> = [];
-      const missingCraftReagents: string[] = [];
-      const missingDeReagents: string[] = [];
 
       for (const row of payload.reagents ?? []) {
         let reagent = reagents.find((item) => item.name.toLowerCase() === row.name.toLowerCase());
 
         if (!reagent) {
-          if (manualReagentListMode) {
-            missingCraftReagents.push(row.name);
-            continue;
-          }
-
           const id = createReagent({
             name: row.name,
             iconUrl: row.iconUrl ?? "",
@@ -830,26 +823,16 @@ export default function Page() {
             setReagentIcon(existing.id, deLine.iconUrl);
           }
         } else {
-          if (!manualReagentListMode) {
-            createReagent({
-              name: materialName,
-              iconUrl: deLine.iconUrl ?? "",
-              profession: "Enchanting",
-              currentPrice: materialPrice,
-            });
-          } else {
-            missingDeReagents.push(materialName);
-          }
+          createReagent({
+            name: materialName,
+            iconUrl: deLine.iconUrl ?? "",
+            profession: "Enchanting",
+            currentPrice: materialPrice,
+          });
         }
       }
 
       toast.success("Item importado do Wowhead.");
-      if (missingCraftReagents.length > 0 || missingDeReagents.length > 0) {
-        const totalMissing = new Set([...missingCraftReagents, ...missingDeReagents]).size;
-        toast.message(
-          `${totalMissing} reagentes nao estavam na lista manual. Cadastre-os na aba Reagentes para vincular no craft.`,
-        );
-      }
       setWowheadQuery("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao importar Wowhead.");
