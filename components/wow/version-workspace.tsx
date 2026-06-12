@@ -138,6 +138,10 @@ function removeDefaultSeedReagents(snapshot: ModuleSnapshot): ModuleSnapshot {
   };
 }
 
+function hasSnapshotData(snapshot: ModuleSnapshot): boolean {
+  return snapshot.reagents.length > 0 || snapshot.crafts.length > 0;
+}
+
 function tabLabel(tab: TabId): string {
   if (tab === "dashboard") {
     return "Dashboard";
@@ -169,6 +173,24 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
     setStorageReady(false);
     const local = loadSnapshot(version);
+    const cleanupKey = defaultSeedCleanupKey(version);
+    const cleanupApplied = window.localStorage.getItem(cleanupKey) === "1";
+
+    // Fast path: if browser cache already has data, hydrate from local only.
+    if (hasSnapshotData(local)) {
+      const hydratedLocal = cleanupApplied ? local : removeDefaultSeedReagents(local);
+
+      if (!cleanupApplied) {
+        window.localStorage.setItem(cleanupKey, "1");
+      }
+
+      setSnapshot(hydratedLocal);
+      setStorageReady(true);
+
+      return () => {
+        cancelled = true;
+      };
+    }
 
     void (async () => {
       const cloud = await loadSnapshotFromCloud(version);
@@ -178,9 +200,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       let hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0) ? cloud : local;
-
-      const cleanupKey = defaultSeedCleanupKey(version);
-      const cleanupApplied = window.localStorage.getItem(cleanupKey) === "1";
 
       if (!cleanupApplied) {
         hydrated = removeDefaultSeedReagents(hydrated);
