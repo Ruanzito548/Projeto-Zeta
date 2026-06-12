@@ -26,6 +26,7 @@ type ImportPayload = {
     minQuantity: number;
     maxQuantity: number;
     materialPrice: number;
+    iconUrl: string;
   }>;
 };
 
@@ -326,6 +327,7 @@ export async function GET(req: NextRequest) {
             minQuantity,
             maxQuantity,
             materialPrice: await getMarketPriceByName(row.name),
+            iconUrl: await getWowheadIconByItemId(row.id),
           };
         }),
       ),

@@ -723,7 +723,7 @@ export default function Page() {
         iconUrl?: string;
         quantityPerCraft?: number;
         reagents?: Array<{ name: string; quantity: number; unitPrice: number; iconUrl?: string }>;
-        disenchantTable?: DisenchantLine[];
+        disenchantTable?: Array<DisenchantLine & { iconUrl?: string }>;
       };
 
       if (!res.ok) {
@@ -805,10 +805,14 @@ export default function Page() {
           if (materialPrice > 0 && !existing.priceLocked) {
             updateReagentPriceWithFeedback(existing.id, materialPrice);
           }
+
+          if ((!existing.iconUrl || existing.iconUrl.trim().length === 0) && deLine.iconUrl) {
+            setReagentIcon(existing.id, deLine.iconUrl);
+          }
         } else {
           createReagent({
             name: materialName,
-            iconUrl: "",
+            iconUrl: deLine.iconUrl ?? "",
             profession: "Enchanting",
             currentPrice: materialPrice,
           });
