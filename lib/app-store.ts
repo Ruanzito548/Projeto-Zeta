@@ -32,6 +32,7 @@ type AppState = AppSnapshot & {
   setShowFavoritesOnly: (value: boolean) => void;
   setShowArchived: (value: boolean) => void;
   createReagent: (payload: Omit<Reagent, "id" | "updatedAt" | "usageCount" | "priceLocked" | "craftFromReagentId" | "craftFromQuantity"> & { priceLocked?: boolean; craftFromReagentId?: string; craftFromQuantity?: number }) => string;
+  deleteReagent: (id: string) => void;
   updateReagentPrice: (id: string, price: number) => void;
   setReagentPriceLocked: (id: string, locked: boolean) => void;
   setReagentIcon: (id: string, iconUrl: string) => void;
@@ -136,6 +137,39 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     get().persist();
     return id;
+  },
+
+  deleteReagent: (id) => {
+    set((state) => {
+      const target = state.reagents.find((row) => row.id === id);
+
+      if (!target) {
+        return state;
+      }
+
+      return {
+        reagents: state.reagents
+          .filter((row) => row.id !== id)
+          .map((row) =>
+            row.craftFromReagentId === id
+              ? {
+                  ...row,
+                  craftFromReagentId: undefined,
+                  craftFromQuantity: 1,
+                  updatedAt: nowIso(),
+                }
+              : row,
+          ),
+        crafts: state.crafts.map((craft) => ({
+          ...craft,
+          reagents: craft.reagents.filter((line) => line.reagentId !== id),
+          updatedAt: nowIso(),
+        })),
+        history: pushHistory(state.history, `Reagente ${target.name} removido.`, "CRAFT_UPDATED"),
+      };
+    });
+
+    get().persist();
   },
 
   updateReagentPrice: (id, price) => {

@@ -135,6 +135,7 @@ export default function Page() {
     setShowArchived,
     setSettings,
     createReagent,
+    deleteReagent,
     updateReagentPrice,
     setReagentPriceLocked,
     setReagentIcon,
@@ -1939,6 +1940,7 @@ export default function Page() {
                       <th className="px-3 py-2 text-left">Preco usado</th>
                       <th className="px-3 py-2 text-left">Atualizado</th>
                       <th className="px-3 py-2 text-left">Uso</th>
+                      <th className="px-3 py-2 text-left">Acoes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2058,6 +2060,18 @@ export default function Page() {
                           </div>
                         </td>
                         <td className="px-3 py-2">{row.usageCount}</td>
+                        <td className="px-3 py-2">
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => {
+                              deleteReagent(row.id);
+                              toast.success("Reagente excluido.");
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
                       </tr>
                     )})}
                   </tbody>
