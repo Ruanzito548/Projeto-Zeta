@@ -15,6 +15,8 @@ import {
   type Reagent,
 } from "@/lib/app-types";
 import { loadSnapshotByUser, saveSnapshotByUser } from "@/lib/indexeddb";
+import { loadCloudSnapshotByUser, saveCloudSnapshotByUser } from "@/lib/firestore-snapshot";
+import { isFirebaseConfigured } from "@/lib/firebase";
 import { nowIso, uid } from "@/lib/utils";
 
 type AppState = AppSnapshot & {
@@ -70,6 +72,15 @@ function pushHistory(history: HistoryEntry[], message: string, type: HistoryEntr
   ].slice(0, 800);
 }
 
+function hasSnapshotData(snapshot: AppSnapshot): boolean {
+  return (
+    snapshot.reagents.length > 0 ||
+    snapshot.crafts.length > 0 ||
+    snapshot.production.length > 0 ||
+    snapshot.history.length > 0
+  );
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...defaultSnapshot,
   hydrated: false,
@@ -81,12 +92,46 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   init: async (userId) => {
     const resolvedUserId = userId.trim() || "guest";
-    const snapshot = await loadSnapshotByUser(resolvedUserId);
-    set({
-      ...snapshot,
-      activeUserId: resolvedUserId,
-      hydrated: true,
-    });
+    const localSnapshot = await loadSnapshotByUser(resolvedUserId);
+
+    if (resolvedUserId === "guest" || !isFirebaseConfigured) {
+      set({
+        ...localSnapshot,
+        activeUserId: resolvedUserId,
+        hydrated: true,
+      });
+      return;
+    }
+
+    try {
+      const cloudSnapshot = await loadCloudSnapshotByUser(resolvedUserId);
+
+      if (cloudSnapshot) {
+        set({
+          ...cloudSnapshot,
+          activeUserId: resolvedUserId,
+          hydrated: true,
+        });
+        await saveSnapshotByUser(cloudSnapshot, resolvedUserId);
+        return;
+      }
+
+      set({
+        ...localSnapshot,
+        activeUserId: resolvedUserId,
+        hydrated: true,
+      });
+
+      if (hasSnapshotData(localSnapshot)) {
+        await saveCloudSnapshotByUser(localSnapshot, resolvedUserId);
+      }
+    } catch {
+      set({
+        ...localSnapshot,
+        activeUserId: resolvedUserId,
+        hydrated: true,
+      });
+    }
   },
 
   persist: async () => {
@@ -100,6 +145,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     await saveSnapshotByUser(snapshot, state.activeUserId);
+
+    if (state.activeUserId !== "guest" && isFirebaseConfigured) {
+      try {
+        await saveCloudSnapshotByUser(snapshot, state.activeUserId);
+      } catch {
+        // Keep local persistence resilient even if cloud write fails.
+      }
+    }
   },
 
   setSettings: (next) => {
