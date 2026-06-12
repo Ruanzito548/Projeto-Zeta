@@ -215,11 +215,13 @@ function parseDisenchant(html: string): DisenchantEntry[] {
         const max = Array.isArray(row.stack) ? Number(row.stack[1] ?? min) : min;
         const chance = row.outof && row.outof > 0 ? Number(row.count ?? 0) / row.outof : 0;
 
+        const rawIcon = row.icon?.trim().toLowerCase();
+
         return {
           itemId: row.id,
           name: row.name,
-          icon: row.icon
-            ? `https://wow.zamimg.com/images/wow/icons/large/${row.icon}.jpg`
+          icon: rawIcon
+            ? `https://wow.zamimg.com/images/wow/icons/large/${rawIcon}.jpg`
             : "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg",
           min: Number.isFinite(min) && min > 0 ? min : 1,
           max: Number.isFinite(max) && max > 0 ? max : 1,
@@ -229,6 +231,46 @@ function parseDisenchant(html: string): DisenchantEntry[] {
   } catch {
     return [];
   }
+}
+
+const fallbackIcon = "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg";
+const iconByItemIdCache = new Map<string, string>();
+
+async function resolveItemIconById(itemId: number, version: WowVersion): Promise<string> {
+  const cacheKey = `${version}:${itemId}`;
+  const cached = iconByItemIdCache.get(cacheKey);
+
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const xml = await fetchWowheadXml(itemId, version);
+    const icon = parseIcon(xml);
+    iconByItemIdCache.set(cacheKey, icon || fallbackIcon);
+    return icon || fallbackIcon;
+  } catch {
+    return fallbackIcon;
+  }
+}
+
+async function enrichDisenchantIcons(
+  entries: DisenchantEntry[],
+  version: WowVersion,
+): Promise<DisenchantEntry[]> {
+  return Promise.all(
+    entries.map(async (entry) => {
+      if (entry.icon && entry.icon !== fallbackIcon) {
+        return entry;
+      }
+
+      const resolvedIcon = await resolveItemIconById(entry.itemId, version);
+      return {
+        ...entry,
+        icon: resolvedIcon,
+      };
+    }),
+  );
 }
 
 async function fetchWowheadXml(itemId: number, version: WowVersion): Promise<string> {
@@ -310,6 +352,7 @@ export async function importCraftItemFromWowhead(
   const name = parseTag(xml, "name") || `Item ${itemId}`;
   const icon = parseIcon(xml);
   const recipe = parseRecipe(xml);
+  const disenchant = await enrichDisenchantIcons(parseDisenchant(html), version);
 
   return {
     itemId,
@@ -320,7 +363,7 @@ export async function importCraftItemFromWowhead(
     profession: parseProfession(xml),
     quantityProduced: parseProducedQuantity(xml),
     recipe,
-    disenchant: parseDisenchant(html),
+    disenchant,
     auctionPrice: 0,
     vendorPrice: parseNumberTag(xml, "sellprice"),
     isCommodity: guessCommodityByName(name),
