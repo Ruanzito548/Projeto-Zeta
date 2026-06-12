@@ -13,7 +13,13 @@ import {
   computeDashboardRows,
   applyCalculatedReagentPrices,
 } from "@/lib/modules/pricing-engine";
-import { loadSnapshot, saveSnapshot } from "@/lib/modules/storage";
+import {
+  loadSnapshot,
+  loadSnapshotFromCloud,
+  saveSnapshot,
+  saveSnapshotToCloud,
+} from "@/lib/modules/storage";
+import { VERSION_REAGENT_SEEDS } from "@/lib/modules/catalog";
 import type { ImportedCraftItem, ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
 import { DEFAULT_SNAPSHOT } from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
@@ -114,6 +120,24 @@ function emptySnapshot(version: WowVersion): ModuleSnapshot {
   return DEFAULT_SNAPSHOT(version);
 }
 
+function defaultSeedCleanupKey(version: WowVersion): string {
+  return `lootmaster-v2-seed-cleaned-${version}`;
+}
+
+function removeDefaultSeedReagents(snapshot: ModuleSnapshot): ModuleSnapshot {
+  const seedIds = new Set(VERSION_REAGENT_SEEDS[snapshot.version] ?? []);
+  const reagents = snapshot.reagents.filter((entry) => !seedIds.has(entry.itemId));
+
+  if (reagents.length === snapshot.reagents.length) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    reagents: applyCalculatedReagentPrices(reagents),
+  };
+}
+
 function tabLabel(tab: TabId): string {
   if (tab === "dashboard") {
     return "Dashboard";
@@ -132,54 +156,55 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [query, setQuery] = useState("");
   const [importInput, setImportInput] = useState("");
   const [importReagentInput, setImportReagentInput] = useState("");
-  const [loadingReagents, setLoadingReagents] = useState(false);
   const [importingItem, setImportingItem] = useState(false);
   const [importingReagent, setImportingReagent] = useState(false);
   const [syncingPrices, setSyncingPrices] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
   const [appDataContent, setAppDataContent] = useState("");
   const [appDataFileName, setAppDataFileName] = useState("");
 
   useEffect(() => {
-    const next = loadSnapshot(version);
-    setSnapshot(next);
-  }, [version]);
+    let cancelled = false;
 
-  useEffect(() => {
-    saveSnapshot(snapshot);
-  }, [snapshot]);
+    setStorageReady(false);
+    const local = loadSnapshot(version);
 
-  useEffect(() => {
-    async function bootstrapReagents() {
-      if (snapshot.reagents.length > 0 || loadingReagents) {
+    void (async () => {
+      const cloud = await loadSnapshotFromCloud(version);
+
+      if (cancelled) {
         return;
       }
 
-      setLoadingReagents(true);
-      try {
-        const response = await fetch(`/api/wow/reagents?version=${version}`, { cache: "no-store" });
-        const data = (await response.json()) as { reagents?: ReagentEntry[]; error?: string };
+      let hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0) ? cloud : local;
 
-        if (!response.ok) {
-          throw new Error(data.error ?? "Falha ao importar reagentes.");
-        }
+      const cleanupKey = defaultSeedCleanupKey(version);
+      const cleanupApplied = window.localStorage.getItem(cleanupKey) === "1";
 
-        setSnapshot((prev) => ({
-          ...prev,
-          version,
-          reagents: applyCalculatedReagentPrices(data.reagents ?? []),
-        }));
-
-        toast.success("Reagentes importados automaticamente do Wowhead.");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Falha ao carregar reagentes.");
-      } finally {
-        setLoadingReagents(false);
+      if (!cleanupApplied) {
+        hydrated = removeDefaultSeedReagents(hydrated);
+        window.localStorage.setItem(cleanupKey, "1");
       }
+
+      setSnapshot(hydrated);
+
+      setStorageReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [version]);
+
+  useEffect(() => {
+    if (!storageReady) {
+      return;
     }
 
-    void bootstrapReagents();
-  }, [version, snapshot.reagents.length, loadingReagents]);
+    saveSnapshot(snapshot);
+    void saveSnapshotToCloud(snapshot);
+  }, [snapshot, storageReady]);
 
   const filteredReagents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -255,17 +280,12 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         importedReagents = imported.filter((entry): entry is ReagentEntry => Boolean(entry));
       }
 
-      const uniqueReagents = [
-        ...mergePriceEntries(
-          snapshot.reagents,
-          [
-            ...importedReagents,
-            ...toTrackedPriceEntries(base, version),
-          ],
-        ),
-      ];
-
       setSnapshot((prev) => {
+        const uniqueReagents = mergePriceEntries(prev.reagents, [
+          ...importedReagents,
+          ...toTrackedPriceEntries(base, version),
+        ]);
+
         const nextCrafts = [
           ...prev.crafts.filter((item) => item.itemId !== base.itemId),
           {
@@ -277,7 +297,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         return {
           ...prev,
           crafts: nextCrafts,
-          reagents: applyCalculatedReagentPrices(uniqueReagents),
+          reagents: applyCalculatedReagentPrices([...uniqueReagents]),
         };
       });
 
@@ -334,20 +354,24 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       const newReagent = payload.reagent;
-      const exists = snapshot.reagents.some((r) => r.itemId === newReagent.itemId);
-
-      if (exists) {
-        toast.error("Este reagente já está na lista.");
-        return;
-      }
-
+      let alreadyExists = false;
       setSnapshot((prev) => {
+        if (prev.reagents.some((entry) => entry.itemId === newReagent.itemId)) {
+          alreadyExists = true;
+          return prev;
+        }
+
         const updatedReagents = [...prev.reagents, newReagent];
         return {
           ...prev,
           reagents: applyCalculatedReagentPrices(updatedReagents),
         };
       });
+
+      if (alreadyExists) {
+        toast.error("Este reagente já está na lista.");
+        return;
+      }
 
       setImportReagentInput("");
       toast.success(`Reagente "${newReagent.name}" adicionado aos preços.`);
@@ -567,7 +591,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={refreshTsmPrices} disabled={syncingPrices || loadingReagents}>
+              <Button onClick={refreshTsmPrices} disabled={syncingPrices}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
               </Button>
