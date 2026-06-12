@@ -169,6 +169,7 @@ export default function Page() {
   const [tsmUpdateProgress, setTsmUpdateProgress] = useState("");
   const [tsmAppDataContent, setTsmAppDataContent] = useState("");
   const [tsmAppDataFileName, setTsmAppDataFileName] = useState("");
+  const [manualReagentListMode, setManualReagentListMode] = useState(true);
   const [recentlyUpdatedReagentId, setRecentlyUpdatedReagentId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -637,6 +638,7 @@ export default function Page() {
     }
 
     const normalizedDE = editor.disenchantTable.filter((row) => row.materialName.trim());
+    let missingDeReagents = 0;
 
     // Sync disenchant material prices to reagent database.
     for (const deLine of normalizedDE) {
@@ -654,13 +656,23 @@ export default function Page() {
           updateReagentPriceWithFeedback(existing.id, materialPrice);
         }
       } else {
-        createReagent({
-          name: materialName,
-          iconUrl: "",
-          profession: "Enchanting",
-          currentPrice: materialPrice,
-        });
+        if (!manualReagentListMode) {
+          createReagent({
+            name: materialName,
+            iconUrl: "",
+            profession: "Enchanting",
+            currentPrice: materialPrice,
+          });
+        } else {
+          missingDeReagents += 1;
+        }
       }
+    }
+
+    if (missingDeReagents > 0) {
+      toast.message(
+        `${missingDeReagents} materiais de disenchant nao estavam na lista manual de reagentes.`,
+      );
     }
 
     if (editor.id) {
@@ -731,11 +743,18 @@ export default function Page() {
       }
 
       const reagentLines: Array<{ id: string; reagentId: string; quantity: number }> = [];
+      const missingCraftReagents: string[] = [];
+      const missingDeReagents: string[] = [];
 
       for (const row of payload.reagents ?? []) {
         let reagent = reagents.find((item) => item.name.toLowerCase() === row.name.toLowerCase());
 
         if (!reagent) {
+          if (manualReagentListMode) {
+            missingCraftReagents.push(row.name);
+            continue;
+          }
+
           const id = createReagent({
             name: row.name,
             iconUrl: row.iconUrl ?? "",
@@ -810,16 +829,26 @@ export default function Page() {
             setReagentIcon(existing.id, deLine.iconUrl);
           }
         } else {
-          createReagent({
-            name: materialName,
-            iconUrl: deLine.iconUrl ?? "",
-            profession: "Enchanting",
-            currentPrice: materialPrice,
-          });
+          if (!manualReagentListMode) {
+            createReagent({
+              name: materialName,
+              iconUrl: deLine.iconUrl ?? "",
+              profession: "Enchanting",
+              currentPrice: materialPrice,
+            });
+          } else {
+            missingDeReagents.push(materialName);
+          }
         }
       }
 
       toast.success("Item importado do Wowhead.");
+      if (missingCraftReagents.length > 0 || missingDeReagents.length > 0) {
+        const totalMissing = new Set([...missingCraftReagents, ...missingDeReagents]).size;
+        toast.message(
+          `${totalMissing} reagentes nao estavam na lista manual. Cadastre-os na aba Reagentes para vincular no craft.`,
+        );
+      }
       setWowheadQuery("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao importar Wowhead.");
@@ -1683,6 +1712,23 @@ export default function Page() {
             <CardHeader><CardTitle>Base de Reagentes</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-slate-300">Atualizacao em massa: altere preco e todos os crafts sao recalculados automaticamente.</p>
+
+              <div className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-slate-950/50 p-3">
+                <div>
+                  <p className="text-sm font-medium text-amber-200">Modo lista manual de reagentes</p>
+                  <p className="text-xs text-slate-400">
+                    {manualReagentListMode
+                      ? "Crafts usam somente reagentes ja cadastrados na base."
+                      : "Wowhead e disenchant podem criar reagentes automaticamente."}
+                  </p>
+                </div>
+                <Button
+                  variant={manualReagentListMode ? "default" : "secondary"}
+                  onClick={() => setManualReagentListMode((prev) => !prev)}
+                >
+                  {manualReagentListMode ? "Manual" : "Automatico"}
+                </Button>
+              </div>
 
               <div className="grid gap-2 rounded-lg border border-amber-500/20 bg-slate-950/50 p-3 md:grid-cols-[1fr_1fr_140px_auto]">
                 <Input
