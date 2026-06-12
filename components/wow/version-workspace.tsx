@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { ArrowDown, ArrowRight, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -59,6 +59,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [importingItem, setImportingItem] = useState(false);
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
+  const [appDataContent, setAppDataContent] = useState("");
+  const [appDataFileName, setAppDataFileName] = useState("");
 
   useEffect(() => {
     const next = loadSnapshot(version);
@@ -221,7 +223,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       const response = await fetch("/tsm-local", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names }),
+        body: JSON.stringify({
+          names,
+          appDataContent: appDataContent.trim() ? appDataContent : undefined,
+        }),
       });
 
       const data = (await response.json()) as TsmResponse;
@@ -283,6 +288,23 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
+  async function onSelectTsmAppData(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      setAppDataContent(content);
+      setAppDataFileName(file.name);
+      toast.success("AppData.lua carregado para esta versao.");
+    } catch {
+      toast.error("Nao foi possivel ler o arquivo AppData.lua.");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -319,10 +341,25 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
               </Button>
+              <label className="cursor-pointer rounded-md border border-amber-500/30 bg-slate-950/60 px-3 py-2 text-sm text-amber-200 hover:bg-slate-900">
+                Enviar AppData.lua desta versao
+                <input
+                  type="file"
+                  accept=".lua,text/plain"
+                  className="hidden"
+                  onChange={onSelectTsmAppData}
+                />
+              </label>
               <Badge variant="info">
                 Ultima atualizacao: {snapshot.lastTsmSyncAt ? new Date(snapshot.lastTsmSyncAt).toLocaleString() : "nunca"}
               </Badge>
             </div>
+
+            <p className="text-xs text-slate-400">
+              {appDataFileName
+                ? `Arquivo ativo nesta versao: ${appDataFileName}`
+                : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
+            </p>
 
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-500" />
