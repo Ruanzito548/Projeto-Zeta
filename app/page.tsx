@@ -68,6 +68,7 @@ type CraftEditorState = {
   name: string;
   iconUrl: string;
   profession: CraftItem["profession"];
+  requiredProfessionLevel: number;
   quantityProduced: number;
   craftTimeMinutes?: number;
   saleValue: number;
@@ -80,6 +81,7 @@ const initialEditor: CraftEditorState = {
   name: "",
   iconUrl: "",
   profession: "Other",
+  requiredProfessionLevel: 1,
   quantityProduced: 1,
   craftTimeMinutes: undefined,
   saleValue: 0,
@@ -289,6 +291,8 @@ export default function Page() {
         name,
         iconUrl: "",
         profession: "Enchanting",
+        category: "Enchanting Materials",
+        origin: "Disenchant Sync",
         currentPrice: price,
       });
     }
@@ -695,6 +699,7 @@ export default function Page() {
       name: craft.name,
       iconUrl: craft.iconUrl ?? "",
       profession: craft.profession,
+      requiredProfessionLevel: craft.requiredProfessionLevel,
       quantityProduced: craft.quantityProduced,
       craftTimeMinutes: craft.craftTimeMinutes,
       saleValue: craft.saleValue,
@@ -746,6 +751,8 @@ export default function Page() {
             name: materialName,
             iconUrl: "",
             profession: "Enchanting",
+            category: "Enchanting Materials",
+            origin: "Disenchant Sync",
             currentPrice: materialPrice,
           });
         } else {
@@ -765,6 +772,7 @@ export default function Page() {
         name: editor.name,
         iconUrl: editor.iconUrl,
         profession: editor.profession,
+        requiredProfessionLevel: editor.requiredProfessionLevel,
         quantityProduced: editor.quantityProduced,
         craftTimeMinutes: editor.craftTimeMinutes,
         saleValue: editor.saleValue,
@@ -778,6 +786,7 @@ export default function Page() {
         name: editor.name,
         iconUrl: editor.iconUrl,
         profession: editor.profession,
+        requiredProfessionLevel: editor.requiredProfessionLevel,
         quantityProduced: editor.quantityProduced,
         craftTimeMinutes: editor.craftTimeMinutes,
         saleValue: editor.saleValue,
@@ -1875,7 +1884,7 @@ export default function Page() {
                 </Button>
               </div>
 
-              <div className="grid gap-2 rounded-lg border border-amber-500/20 bg-slate-950/50 p-3 md:grid-cols-[1fr_1fr_140px_auto]">
+              <div className="grid gap-2 rounded-lg border border-amber-500/20 bg-slate-950/50 p-3 md:grid-cols-[1fr_1fr_220px_1fr_auto]">
                 <Input
                   placeholder="Nome do reagente (ex: Strange Dust)"
                   value={newReagentName}
@@ -1886,10 +1895,18 @@ export default function Page() {
                       if (!name) return;
                       const exists = reagents.find((r) => r.name.toLowerCase() === name.toLowerCase());
                       if (exists) { toast.error("Reagente ja cadastrado."); return; }
-                      createReagent({ name, iconUrl: "", profession: newReagentProfession, currentPrice: Number(newReagentPrice) || 0 });
+                      createReagent({
+                        name,
+                        iconUrl: "",
+                        profession: "Any",
+                        category: newReagentCategory,
+                        origin: newReagentOrigin.trim() || "Manual",
+                        currentPrice: Number(newReagentPrice) || 0,
+                      });
                       toast.success(`${name} cadastrado.`);
                       setNewReagentName("");
                       setNewReagentPrice("");
+                      setNewReagentOrigin("");
                     }
                   }}
                 />
@@ -1901,28 +1918,41 @@ export default function Page() {
                   onChange={(e) => setNewReagentPrice(e.target.value)}
                 />
                 <Select
-                  value={newReagentProfession}
-                  onChange={(e) => setNewReagentProfession(e.target.value as CraftItem["profession"])}
+                  value={newReagentCategory}
+                  onChange={(e) => setNewReagentCategory(e.target.value as ReagentCategory)}
                 >
-                  {PROFESSIONS.map((p) => (
-                    <option key={p} value={p}>{p}</option>
+                  {REAGENT_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{category}</option>
                   ))}
                 </Select>
+                <Input
+                  placeholder="Origem (opcional)"
+                  value={newReagentOrigin}
+                  onChange={(e) => setNewReagentOrigin(e.target.value)}
+                />
                 <Button
                   onClick={() => {
                     const name = newReagentName.trim();
                     if (!name) { toast.error("Informe o nome do reagente."); return; }
                     const exists = reagents.find((r) => r.name.toLowerCase() === name.toLowerCase());
                     if (exists) { toast.error("Reagente ja cadastrado."); return; }
-                    createReagent({ name, iconUrl: "", profession: newReagentProfession, currentPrice: Number(newReagentPrice) || 0 });
+                    createReagent({
+                      name,
+                      iconUrl: "",
+                      profession: "Any",
+                      category: newReagentCategory,
+                      origin: newReagentOrigin.trim() || "Manual",
+                      currentPrice: Number(newReagentPrice) || 0,
+                    });
                     toast.success(`${name} cadastrado.`);
                     setNewReagentName("");
                     setNewReagentPrice("");
+                    setNewReagentOrigin("");
                   }}
                 >
                   <Plus className="mr-1 h-4 w-4" /> Cadastrar
                 </Button>
-                <p className="text-xs text-amber-200 md:col-span-4">
+                <p className="text-xs text-amber-200 md:col-span-5">
                   Preco inicial: {formatCopper(Math.max(0, Number(newReagentPrice) || 0), settings)}
                 </p>
               </div>
