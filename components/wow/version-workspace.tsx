@@ -131,8 +131,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [snapshot, setSnapshot] = useState<ModuleSnapshot>(() => emptySnapshot(version));
   const [query, setQuery] = useState("");
   const [importInput, setImportInput] = useState("");
+  const [importReagentInput, setImportReagentInput] = useState("");
   const [loadingReagents, setLoadingReagents] = useState(false);
   const [importingItem, setImportingItem] = useState(false);
+  const [importingReagent, setImportingReagent] = useState(false);
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
   const [appDataContent, setAppDataContent] = useState("");
@@ -286,6 +288,73 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       toast.error(error instanceof Error ? error.message : "Erro inesperado ao importar item.");
     } finally {
       setImportingItem(false);
+    }
+  }
+
+  async function importReagent() {
+    if (!importReagentInput.trim()) {
+      toast.error("Informe URL do Wowhead ou Item ID do reagente.");
+      return;
+    }
+
+    setImportingReagent(true);
+
+    try {
+      let itemId: number | null = null;
+
+      // Try to parse as number first
+      const asNumber = parseInt(importReagentInput.trim(), 10);
+      if (!isNaN(asNumber) && asNumber > 0) {
+        itemId = asNumber;
+      } else {
+        // Try to extract from URL
+        const match = importReagentInput.match(/[?&]item=(\d+)/);
+        if (match) {
+          itemId = parseInt(match[1], 10);
+        }
+      }
+
+      if (!itemId || itemId <= 0) {
+        throw new Error("Item ID inválido. Informe um ID numérico ou URL do Wowhead.");
+      }
+
+      const response = await fetch(
+        `/api/wow/reagent?version=${version}&itemId=${itemId}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        throw new Error("Reagente não encontrado no Wowhead.");
+      }
+
+      const payload = (await response.json()) as { reagent?: ReagentEntry };
+
+      if (!payload.reagent) {
+        throw new Error("Falha ao processar reagente.");
+      }
+
+      const newReagent = payload.reagent;
+      const exists = snapshot.reagents.some((r) => r.itemId === newReagent.itemId);
+
+      if (exists) {
+        toast.error("Este reagente já está na lista.");
+        return;
+      }
+
+      setSnapshot((prev) => {
+        const updatedReagents = [...prev.reagents, newReagent];
+        return {
+          ...prev,
+          reagents: applyCalculatedReagentPrices(updatedReagents),
+        };
+      });
+
+      setImportReagentInput("");
+      toast.success(`Reagente "${newReagent.name}" adicionado aos preços.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro inesperado ao importar reagente.");
+    } finally {
+      setImportingReagent(false);
     }
   }
 
@@ -521,6 +590,24 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 ? `Arquivo ativo nesta versao: ${appDataFileName}`
                 : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
             </p>
+
+            <div className="space-y-2 rounded-md border border-amber-500/20 bg-slate-950/40 p-3">
+              <p className="text-sm font-semibold text-amber-200">Adicionar Reagente Manual</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={importReagentInput}
+                  onChange={(event) => setImportReagentInput(event.target.value)}
+                  placeholder="URL do Wowhead ou Item ID"
+                  className="flex-1"
+                />
+                <Button onClick={importReagent} disabled={importingReagent} size="sm">
+                  {importingReagent ? "Importando..." : "Importar"}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400">
+                Adicione reagentes manualmente para rastrear preços adicionais além do catálogo automático.
+              </p>
+            </div>
 
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-500" />
