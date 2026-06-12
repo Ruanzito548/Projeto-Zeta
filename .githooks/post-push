@@ -1,0 +1,24 @@
+#!/bin/sh
+# Auto deploy to Vercel after each successful git push.
+
+if [ "${SKIP_VERCEL_DEPLOY}" = "1" ]; then
+  echo "[post-push] SKIP_VERCEL_DEPLOY=1, skipping Vercel deploy."
+  exit 0
+fi
+
+if [ ! -f ".vercel/project.json" ]; then
+  echo "[post-push] .vercel/project.json not found, skipping Vercel deploy."
+  exit 0
+fi
+
+echo "[post-push] Triggering Vercel production deploy..."
+
+npx --yes vercel --prod --yes
+status=$?
+
+if [ $status -ne 0 ]; then
+  echo "[post-push] Vercel deploy failed with exit code $status"
+  exit $status
+fi
+
+echo "[post-push] Vercel deploy finished successfully."
