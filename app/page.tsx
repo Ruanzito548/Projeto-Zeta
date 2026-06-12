@@ -1715,6 +1715,17 @@ export default function Page() {
                   onClick={async () => {
                     if (unlockedReagents.length === 0) return;
 
+                    const isHostedRuntime =
+                      typeof window !== "undefined" &&
+                      !["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+                    if (isHostedRuntime && !tsmAppDataContent.trim()) {
+                      const warning = "No deploy, envie o AppData.lua antes de sincronizar o TSM local.";
+                      setTsmUpdateProgress(warning);
+                      toast.error(warning);
+                      return;
+                    }
+
                     setUpdatingTSM(true);
                     setTsmUpdateProgress("Lendo dados locais do TSM...");
 

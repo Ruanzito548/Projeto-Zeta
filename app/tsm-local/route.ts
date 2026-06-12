@@ -364,14 +364,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao ler TSM local.";
-    const hostedHint =
-      process.env.VERCEL && message.includes("TSM AppData.lua not found")
-        ? " Em deploy (Vercel), envie o AppData.lua pelo campo de upload na tela de reagentes."
-        : "";
+    const uploadHint = message.includes("TSM AppData.lua not found")
+      ? " Envie o AppData.lua pelo campo de upload na tela de reagentes e tente novamente."
+      : "";
 
     return NextResponse.json(
       {
-        error: `${message}${hostedHint}`,
+        error: `${message}${uploadHint}`,
       },
       { status: 500 },
     );
