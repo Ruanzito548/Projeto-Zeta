@@ -165,8 +165,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
-  const [appDataContent, setAppDataContent] = useState("");
-  const [appDataFileName, setAppDataFileName] = useState("");
+  const [appDataContent, setAppDataContent] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(`lootmaster-appdata-content-${version}`) ?? "";
+  });
+  const [appDataFileName, setAppDataFileName] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(`lootmaster-appdata-filename-${version}`) ?? "";
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -477,7 +483,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       const content = await file.text();
       setAppDataContent(content);
       setAppDataFileName(file.name);
-      toast.success("AppData.lua carregado para esta versao.");
+      window.localStorage.setItem(`lootmaster-appdata-content-${version}`, content);
+      window.localStorage.setItem(`lootmaster-appdata-filename-${version}`, file.name);
+      toast.success("AppData.lua carregado e salvo para esta versao.");
     } catch {
       toast.error("Nao foi possivel ler o arquivo AppData.lua.");
     }
