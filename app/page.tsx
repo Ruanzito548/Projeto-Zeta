@@ -174,6 +174,10 @@ export default function Page() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
+  const tsmSessionStorageKey = useMemo(
+    () => `tsm-appdata:${authUser?.uid ?? "guest"}`,
+    [authUser?.uid],
+  );
 
   useEffect(() => {
     if (!auth) {
@@ -189,6 +193,49 @@ export default function Page() {
 
     return () => unsubscribe();
   }, [init]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !authReady) {
+      return;
+    }
+
+    try {
+      const cached = window.sessionStorage.getItem(tsmSessionStorageKey);
+
+      if (!cached) {
+        setTsmAppDataContent("");
+        setTsmAppDataFileName("");
+        return;
+      }
+
+      const parsed = JSON.parse(cached) as { fileName?: string; content?: string };
+
+      setTsmAppDataContent(parsed.content ?? "");
+      setTsmAppDataFileName(parsed.fileName ?? "");
+    } catch {
+      setTsmAppDataContent("");
+      setTsmAppDataFileName("");
+    }
+  }, [authReady, tsmSessionStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !authReady) {
+      return;
+    }
+
+    if (!tsmAppDataContent.trim()) {
+      window.sessionStorage.removeItem(tsmSessionStorageKey);
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      tsmSessionStorageKey,
+      JSON.stringify({
+        fileName: tsmAppDataFileName,
+        content: tsmAppDataContent,
+      }),
+    );
+  }, [authReady, tsmAppDataContent, tsmAppDataFileName, tsmSessionStorageKey]);
 
   function updateReagentPriceWithFeedback(reagentId: string, price: number) {
     updateReagentPrice(reagentId, price);
