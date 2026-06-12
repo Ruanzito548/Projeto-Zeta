@@ -237,6 +237,44 @@ export default function Page() {
     );
   }, [authReady, tsmAppDataContent, tsmAppDataFileName, tsmSessionStorageKey]);
 
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+
+    const knownNames = new Set(reagents.map((row) => row.name.trim().toLowerCase()));
+    const pending = new Map<string, number>();
+
+    for (const craft of crafts) {
+      for (const line of craft.disenchantTable) {
+        const materialName = line.materialName.trim();
+
+        if (!materialName) {
+          continue;
+        }
+
+        const key = materialName.toLowerCase();
+
+        if (knownNames.has(key)) {
+          continue;
+        }
+
+        const price = Math.max(0, Number(line.materialPrice) || 0);
+        const current = pending.get(materialName) ?? 0;
+        pending.set(materialName, Math.max(current, price));
+      }
+    }
+
+    for (const [name, price] of pending) {
+      createReagent({
+        name,
+        iconUrl: "",
+        profession: "Enchanting",
+        currentPrice: price,
+      });
+    }
+  }, [crafts, createReagent, hydrated, reagents]);
+
   function updateReagentPriceWithFeedback(reagentId: string, price: number) {
     updateReagentPrice(reagentId, price);
     setRecentlyUpdatedReagentId(reagentId);
