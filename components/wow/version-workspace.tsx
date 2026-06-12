@@ -566,42 +566,52 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Workspace da expansao</CardTitle>
+    <div className="space-y-7">
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(145deg,rgba(6,15,17,0.92),rgba(4,10,16,0.95))]">
+          <CardTitle className="text-xl md:text-2xl">Central de Operacoes da Expansao</CardTitle>
+          <p className="text-sm text-slate-300">
+            Navegacao modular para analise financeira, importacao de itens e catalogo de reagentes.
+          </p>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
+        <CardContent className="space-y-5 pt-6">
+          <div className="grid gap-3 md:grid-cols-3">
             {TABS.map((tab) => (
               <Button
                 key={tab}
                 variant={activeTab === tab ? "default" : "secondary"}
-                size="sm"
+                size="default"
                 onClick={() => setActiveTab(tab)}
+                className={
+                  activeTab === tab
+                    ? "h-12 justify-center text-sm uppercase tracking-[0.16em]"
+                    : "h-12 justify-center border-emerald-500/20 text-sm uppercase tracking-[0.16em]"
+                }
               >
                 {tabLabel(tab)}
               </Button>
             ))}
           </div>
-          <p className="text-sm text-slate-300">
-            Estrutura modular pronta para novas abas sem refatorar a pagina.
+
+          <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-slate-300">
+            Estrutura visual premium com foco em legibilidade de margem, decisao rapida e escala para novos modulos.
           </p>
         </CardContent>
       </Card>
 
       {activeTab === "reagents" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Precos</CardTitle>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
+            <CardTitle className="text-2xl">Catalogo de Precos</CardTitle>
+            <p className="text-sm text-slate-300">Gestao de reagentes com fontes de custo, valor fixo e rastreio por item.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={refreshTsmPrices} disabled={syncingPrices}>
+          <CardContent className="space-y-6 pt-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={refreshTsmPrices} disabled={syncingPrices} className="h-11">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
               </Button>
-              <label className="cursor-pointer rounded-md border border-amber-500/30 bg-slate-950/60 px-3 py-2 text-sm text-amber-200 hover:bg-slate-900">
+              <label className="cursor-pointer rounded-xl border border-emerald-500/35 bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.18)_inset] hover:border-emerald-400/55">
                 Enviar AppData.lua desta versao
                 <input
                   type="file"
@@ -610,77 +620,77 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   onChange={onSelectTsmAppData}
                 />
               </label>
-              <Badge variant="info">
+              <Badge variant="info" className="h-8">
                 Ultima atualizacao: {snapshot.lastTsmSyncAt ? new Date(snapshot.lastTsmSyncAt).toLocaleString() : "nunca"}
               </Badge>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-sm text-slate-400">
               {appDataFileName
                 ? `Arquivo ativo nesta versao: ${appDataFileName}`
                 : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
             </p>
 
-            <div className="space-y-2 rounded-md border border-amber-500/20 bg-slate-950/40 p-3">
-              <p className="text-sm font-semibold text-amber-200">Adicionar Reagente Manual</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="space-y-3 rounded-2xl border border-emerald-500/30 bg-[linear-gradient(150deg,rgba(5,13,15,0.92),rgba(6,11,20,0.9))] p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.12)_inset]">
+              <p className="text-base font-semibold text-emerald-100">Adicionar Reagente Manual</p>
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Input
                   value={importReagentInput}
                   onChange={(event) => setImportReagentInput(event.target.value)}
                   placeholder="URL do Wowhead ou Item ID"
                   className="flex-1"
                 />
-                <Button onClick={importReagent} disabled={importingReagent} size="sm">
+                <Button onClick={importReagent} disabled={importingReagent} size="default" className="sm:w-44">
                   {importingReagent ? "Importando..." : "Importar"}
                 </Button>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-400">
                 Adicione reagentes manualmente para rastrear preços adicionais além do catálogo automático.
               </p>
             </div>
 
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-500" />
+              <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-emerald-500/55" />
               <Input
-                className="pl-9"
+                className="pl-10"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Pesquisar por nome ou item ID"
               />
             </div>
 
-            <div className="overflow-x-auto rounded-md border border-amber-500/20">
+            <div className="overflow-x-auto rounded-2xl border border-emerald-500/25 bg-black/20">
               <table className="w-full min-w-[1280px] text-sm">
-                <thead className="bg-slate-950/70">
+                <thead className="bg-[linear-gradient(180deg,rgba(6,16,19,0.98),rgba(3,9,13,0.98))] text-xs uppercase tracking-[0.11em] text-emerald-200/90">
                   <tr>
-                    <th className="px-3 py-2 text-left">Item</th>
-                    <th className="px-3 py-2 text-left">ID</th>
-                    <th className="px-3 py-2 text-left">Qualidade</th>
-                    <th className="px-3 py-2 text-left">Fonte</th>
-                    <th className="px-3 py-2 text-left">Origem</th>
-                    <th className="px-3 py-2 text-left">Preco TSM</th>
-                    <th className="px-3 py-2 text-left">Preco Calculado</th>
-                    <th className="px-3 py-2 text-left">Valor Fixado</th>
-                    <th className="px-3 py-2 text-left">Acao</th>
-                    <th className="px-3 py-2 text-left">Wowhead</th>
+                    <th className="px-4 py-3 text-left">Item</th>
+                    <th className="px-4 py-3 text-left">ID</th>
+                    <th className="px-4 py-3 text-left">Qualidade</th>
+                    <th className="px-4 py-3 text-left">Fonte</th>
+                    <th className="px-4 py-3 text-left">Origem</th>
+                    <th className="px-4 py-3 text-left">Preco TSM</th>
+                    <th className="px-4 py-3 text-left">Preco Calculado</th>
+                    <th className="px-4 py-3 text-left">Valor Fixado</th>
+                    <th className="px-4 py-3 text-left">Acao</th>
+                    <th className="px-4 py-3 text-left">Wowhead</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredReagents.map((entry) => (
-                    <tr key={entry.itemId} className="border-t border-amber-500/10">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded" />
-                          <span>{entry.name}</span>
+                    <tr key={entry.itemId} className="border-t border-emerald-500/12 transition-colors hover:bg-emerald-500/5">
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <img src={entry.icon} alt={entry.name} className="h-10 w-10 rounded-lg border border-emerald-500/35" />
+                          <span className="font-semibold text-emerald-50">{entry.name}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2">{entry.itemId}</td>
-                      <td className="px-3 py-2 capitalize">{entry.quality}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-4 font-medium text-slate-200">{entry.itemId}</td>
+                      <td className="px-4 py-4 capitalize text-slate-300">{entry.quality}</td>
+                      <td className="px-4 py-4">
                         <Select
                           value={entry.priceSource}
                           onChange={(event) => updatePriceSource(entry.itemId, event.target.value as PriceSource)}
-                          className="h-8 min-w-[160px]"
+                          className="h-10 min-w-[170px]"
                         >
                           {SOURCE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -689,33 +699,39 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           ))}
                         </Select>
                       </td>
-                      <td className="max-w-sm px-3 py-2 text-slate-300">{entry.source}</td>
-                      <td className="px-3 py-2">{formatMoney(entry.tsmPrice)}</td>
-                      <td className="px-3 py-2">
+                      <td className="max-w-sm px-4 py-4 text-slate-300">{entry.source}</td>
+                      <td className="px-4 py-4 font-medium text-sky-200">{formatMoney(entry.tsmPrice)}</td>
+                      <td className="px-4 py-4">
                         {entry.calculatedPrice === null ? (
                           <span className="text-slate-500">-</span>
                         ) : (
-                          <span className="text-emerald-300">{formatMoney(entry.calculatedPrice)}</span>
+                          <span className="font-semibold text-emerald-300">{formatMoney(entry.calculatedPrice)}</span>
                         )}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-4">
                         {entry.fixedPrice && entry.fixedPrice > 0 ? (
-                          <span className="text-amber-200">{formatMoney(entry.fixedPrice)}</span>
+                          <span className="font-semibold text-emerald-200">{formatMoney(entry.fixedPrice)}</span>
                         ) : (
                           <span className="text-slate-500">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-4 py-4">
                         <Button
-                          size="sm"
+                          size="default"
                           variant="secondary"
                           onClick={() => addFixedPrice(entry.itemId, entry.name, entry.fixedPrice)}
+                          className="h-10"
                         >
                           Adicionar preco fixo
                         </Button>
                       </td>
-                      <td className="px-3 py-2">
-                        <a href={entry.wowheadUrl} target="_blank" rel="noreferrer" className="text-amber-300 underline">
+                      <td className="px-4 py-4">
+                        <a
+                          href={entry.wowheadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.09em] text-emerald-200 hover:border-emerald-400/60 hover:text-emerald-100"
+                        >
                           Abrir
                         </a>
                       </td>
@@ -723,7 +739,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   ))}
                   {filteredReagents.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-8 text-center text-slate-400" colSpan={10}>
+                      <td className="px-4 py-12 text-center text-base text-slate-400" colSpan={10}>
                         Nenhum item encontrado.
                       </td>
                     </tr>
@@ -736,20 +752,22 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       ) : null}
 
       {activeTab === "import" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Importar Item</CardTitle>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
+            <CardTitle className="text-2xl">Importar Item</CardTitle>
+            <p className="text-sm text-slate-300">Entrada manual por URL ou Item ID com captura automatica de dados economicos.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-5 pt-6">
             <Input
               value={importInput}
               onChange={(event) => setImportInput(event.target.value)}
               placeholder="URL do Wowhead ou Item ID"
+              className="h-12"
             />
-            <Button onClick={importItem} disabled={importingItem}>
+            <Button onClick={importItem} disabled={importingItem} className="h-12 w-full sm:w-auto">
               {importingItem ? "Importando..." : "Importar e Salvar"}
             </Button>
-            <p className="text-sm text-slate-300">
+            <p className="rounded-xl border border-emerald-500/20 bg-black/20 px-4 py-3 text-sm text-slate-300">
               A importacao busca automaticamente nome, icone, qualidade, receita, quantidade produzida,
               profissao e dados de disenchant quando existirem.
             </p>
@@ -758,26 +776,27 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       ) : null}
 
       {activeTab === "dashboard" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Dashboard</CardTitle>
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-emerald-500/20 bg-[linear-gradient(180deg,rgba(8,18,20,0.92),rgba(3,8,12,0.96))]">
+            <CardTitle className="text-2xl">Dashboard Financeiro</CardTitle>
+            <p className="text-sm text-slate-300">Painel premium de margem por craft, venda e disenchant com comparativo de melhor opcao.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="overflow-x-auto rounded-md border border-amber-500/20">
-              <table className="w-full min-w-[1080px] text-sm">
-                <thead className="bg-slate-950/70">
+          <CardContent className="space-y-6 pt-6">
+            <div className="overflow-x-auto rounded-2xl border border-emerald-500/25 bg-black/20">
+              <table className="w-full min-w-[1180px] text-sm">
+                <thead className="bg-[linear-gradient(180deg,rgba(6,16,19,0.98),rgba(3,9,13,0.98))] text-xs uppercase tracking-[0.11em] text-emerald-200/90">
                   <tr>
-                    <th className="px-3 py-2 text-left"></th>
-                    <th className="px-3 py-2 text-left">Item</th>
-                    <th className="px-3 py-2 text-left">Profissao</th>
-                    <th className="px-3 py-2 text-left">Custo Craft</th>
-                    <th className="px-3 py-2 text-left">Venda Leilao</th>
-                    <th className="px-3 py-2 text-left">Venda NPC</th>
-                    <th className="px-3 py-2 text-left">Lucro Leilao</th>
-                    <th className="px-3 py-2 text-left">Lucro Disenchant</th>
-                    <th className="px-3 py-2 text-left">Lucro NPC</th>
-                    <th className="px-3 py-2 text-left">Melhor</th>
-                    <th className="px-3 py-2 text-left">Acoes</th>
+                    <th className="px-4 py-3 text-left"></th>
+                    <th className="px-4 py-3 text-left">Item</th>
+                    <th className="px-4 py-3 text-left">Profissao</th>
+                    <th className="px-4 py-3 text-left">Custo Craft</th>
+                    <th className="px-4 py-3 text-left">Venda Leilao</th>
+                    <th className="px-4 py-3 text-left">Venda NPC</th>
+                    <th className="px-4 py-3 text-left">Lucro Leilao</th>
+                    <th className="px-4 py-3 text-left">Lucro Disenchant</th>
+                    <th className="px-4 py-3 text-left">Lucro NPC</th>
+                    <th className="px-4 py-3 text-left">Melhor</th>
+                    <th className="px-4 py-3 text-left">Acoes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -786,48 +805,58 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
 
                     return (
-                      <tr key={row.itemId} className="border-t border-amber-500/10">
-                          <td className="px-3 py-2">
-                            <button
+                      <tr key={row.itemId} className="border-t border-emerald-500/12 transition-colors hover:bg-emerald-500/5">
+                          <td className="px-4 py-4">
+                            <Button
                               type="button"
+                              size="icon"
+                              variant="secondary"
                               onClick={() =>
                                 setExpandedCraftIds((prev) => ({
                                   ...prev,
                                   [row.itemId]: !expanded,
                                 }))
                               }
-                              className="rounded border border-amber-500/30 p-1 hover:bg-slate-800"
+                              className="h-9 w-9"
                             >
                               {expanded ? <ArrowDown className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
-                            </button>
+                            </Button>
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <img src={row.icon} alt={row.name} className="h-8 w-8 rounded" />
-                              <span>{row.name}</span>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-3">
+                              <img src={row.icon} alt={row.name} className="h-11 w-11 rounded-lg border border-emerald-500/35" />
+                              <span className="font-semibold text-emerald-50">{row.name}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-2">{row.profession}</td>
-                          <td className="px-3 py-2">{formatMoney(row.craftCost)}</td>
-                          <td className="px-3 py-2">{formatMoney(row.auctionPrice)}</td>
-                          <td className="px-3 py-2">{formatMoney(row.vendorPrice)}</td>
-                          <td className="px-3 py-2">{formatMoney(Math.max(0, row.auctionProfit))}</td>
-                          <td className="px-3 py-2">{formatMoney(Math.max(0, row.disenchantProfit))}</td>
-                          <td className="px-3 py-2">{formatMoney(Math.max(0, row.npcProfit))}</td>
-                          <td className="px-3 py-2">
+                          <td className="px-4 py-4 text-slate-300">{row.profession}</td>
+                          <td className="px-4 py-4 font-semibold text-sky-200">{formatMoney(row.craftCost)}</td>
+                          <td className="px-4 py-4 font-medium text-slate-200">{formatMoney(row.auctionPrice)}</td>
+                          <td className="px-4 py-4 font-medium text-slate-300">{formatMoney(row.vendorPrice)}</td>
+                          <td className={`px-4 py-4 font-semibold ${row.auctionProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {formatMoney(Math.max(0, row.auctionProfit))}
+                          </td>
+                          <td className={`px-4 py-4 font-semibold ${row.disenchantProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {formatMoney(Math.max(0, row.disenchantProfit))}
+                          </td>
+                          <td className={`px-4 py-4 font-semibold ${row.npcProfit >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                            {formatMoney(Math.max(0, row.npcProfit))}
+                          </td>
+                          <td className="px-4 py-4">
                             <Badge variant={row.bestOption === "AUCTION" ? "success" : row.bestOption === "DISENCHANT" ? "info" : "warning"}>
                               {row.bestOption}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2">
-                            <button
+                          <td className="px-4 py-4">
+                            <Button
                               type="button"
+                              variant="danger"
+                              size="sm"
                               onClick={() => removeCraftItem(row.itemId, row.name)}
-                              className="inline-flex items-center gap-1 rounded border border-rose-400/30 px-2 py-1 text-xs text-rose-300 hover:bg-rose-500/10"
+                              className="inline-flex items-center gap-1.5"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                               Excluir
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                     );
@@ -841,44 +870,44 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     }
 
                     return (
-                      <tr key={`expanded-${row.itemId}`} className="border-t border-amber-500/10 bg-slate-950/40">
-                        <td colSpan={11} className="px-5 py-4">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div>
-                              <p className="mb-2 text-sm font-semibold text-amber-200">Receita</p>
-                              <div className="space-y-2">
+                      <tr key={`expanded-${row.itemId}`} className="border-t border-emerald-500/14 bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
+                        <td colSpan={11} className="px-6 py-6">
+                          <div className="grid gap-5 md:grid-cols-2">
+                            <div className="rounded-2xl border border-emerald-500/20 bg-black/25 p-4 shadow-[0_0_0_1px_rgba(16,185,129,0.12)_inset]">
+                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-emerald-200">Receita</p>
+                              <div className="space-y-3">
                                 {craft.recipe.map((component) => {
                                   const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
                                   const unit = reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0;
                                   return (
-                                    <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded border border-amber-500/15 p-2">
-                                      <div className="flex items-center gap-2">
+                                    <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3">
+                                      <div className="flex items-center gap-3">
                                         <img
                                           src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
                                           alt={component.name}
-                                          className="h-6 w-6 rounded"
+                                          className="h-8 w-8 rounded-md border border-emerald-500/25"
                                         />
-                                        <span>{component.quantity}x {component.name}</span>
+                                        <span className="text-slate-200">{component.quantity}x {component.name}</span>
                                       </div>
-                                      <span>{formatMoney(component.quantity * unit)}</span>
+                                      <span className="font-semibold text-sky-200">{formatMoney(component.quantity * unit)}</span>
                                     </div>
                                   );
                                 })}
                               </div>
                             </div>
-                            <div>
-                              <p className="mb-2 text-sm font-semibold text-amber-200">Disenchant</p>
-                              <div className="space-y-2">
+                            <div className="rounded-2xl border border-sky-500/20 bg-black/25 p-4 shadow-[0_0_0_1px_rgba(14,165,233,0.12)_inset]">
+                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-sky-200">Disenchant</p>
+                              <div className="space-y-3">
                                 {craft.disenchant.length === 0 ? (
                                   <p className="text-sm text-slate-400">Sem dados de disenchant.</p>
                                 ) : (
                                   craft.disenchant.map((entry) => (
-                                    <div key={`${craft.itemId}-${entry.itemId}`} className="rounded border border-amber-500/15 p-2">
-                                      <div className="flex items-center gap-2">
-                                        <img src={entry.icon} alt={entry.name} className="h-6 w-6 rounded" />
-                                        <span>{entry.name}</span>
+                                    <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-sky-500/18 bg-sky-500/5 p-3">
+                                      <div className="flex items-center gap-3">
+                                        <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-sky-500/20" />
+                                        <span className="text-slate-200">{entry.name}</span>
                                       </div>
-                                      <p className="mt-1 text-xs text-slate-300">
+                                      <p className="mt-1.5 text-xs text-slate-300">
                                         Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
                                       </p>
                                     </div>
@@ -893,7 +922,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   })}
                   {dashboardRows.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-3 py-8 text-center text-slate-400">
+                      <td colSpan={11} className="px-4 py-12 text-center text-base text-slate-400">
                         Nenhum item importado ainda. Use a aba Importar Item.
                       </td>
                     </tr>
