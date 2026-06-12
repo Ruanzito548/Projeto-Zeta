@@ -1,8 +1,12 @@
 import type { Reagent } from "@/lib/app-types";
+import { inferReagentCategory } from "@/lib/reagent-taxonomy";
 
-export type StarterReagentSeed = Pick<Reagent, "name" | "iconUrl" | "profession" | "currentPrice">;
+export type StarterReagentSeed = Pick<
+  Reagent,
+  "name" | "iconUrl" | "profession" | "currentPrice" | "category" | "origin"
+>;
 
-export const STARTER_REAGENTS: StarterReagentSeed[] = [
+const STARTER_REAGENT_NAMES = [
   { name: "Strange Dust", iconUrl: "", profession: "Any", currentPrice: 0 },
   { name: "Soul Dust", iconUrl: "", profession: "Any", currentPrice: 0 },
   { name: "Vision Dust", iconUrl: "", profession: "Any", currentPrice: 0 },
@@ -131,4 +135,10 @@ export const STARTER_REAGENTS: StarterReagentSeed[] = [
   { name: "Primal Life", iconUrl: "", profession: "Any", currentPrice: 0 },
   { name: "Primal Mana", iconUrl: "", profession: "Any", currentPrice: 0 },
   { name: "Primal Shadow", iconUrl: "", profession: "Any", currentPrice: 0 },
-];
+] as const;
+
+export const STARTER_REAGENTS: StarterReagentSeed[] = STARTER_REAGENT_NAMES.map((row) => ({
+  ...row,
+  category: inferReagentCategory(row.name),
+  origin: "Starter Catalog",
+}));

@@ -17,11 +17,19 @@ function normalizeSnapshot(data: Partial<AppSnapshot> | undefined): AppSnapshot 
     ...source,
     reagents: (source.reagents ?? []).map((reagent) => ({
       ...reagent,
+      category: reagent.category ?? "Miscellaneous",
+      origin: reagent.origin?.trim() || undefined,
       priceLocked: Boolean(reagent.priceLocked),
       craftFromReagentId: reagent.craftFromReagentId || undefined,
       craftFromQuantity: Math.max(1, Number(reagent.craftFromQuantity) || 1),
     })),
-    crafts: source.crafts ?? [],
+    crafts: (source.crafts ?? []).map((craft) => ({
+      ...craft,
+      craftTimeMinutes:
+        typeof craft.craftTimeMinutes === "number" && craft.craftTimeMinutes > 0
+          ? craft.craftTimeMinutes
+          : undefined,
+    })),
     production: source.production ?? [],
     history: source.history ?? [],
     settings: {

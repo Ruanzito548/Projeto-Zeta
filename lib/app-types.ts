@@ -18,10 +18,23 @@ export type CraftTag =
   | "Mercado Lento"
   | "Mercado Rapido";
 
+export type ReagentCategory =
+  | "Metals & Stone"
+  | "Cloth"
+  | "Leather"
+  | "Herbs"
+  | "Enchanting Materials"
+  | "Gems"
+  | "Elemental Materials"
+  | "Consumables"
+  | "Miscellaneous";
+
 export interface Reagent {
   id: string;
   name: string;
   iconUrl?: string;
+  category: ReagentCategory;
+  origin?: string;
   priceLocked: boolean;
   craftFromReagentId?: string;
   craftFromQuantity?: number;
@@ -53,6 +66,7 @@ export interface CraftItem {
   profession: Profession;
   requiredProfessionLevel: number;
   quantityProduced: number;
+  craftTimeMinutes?: number;
   saleValue: number;
   reagents: CraftReagentLine[];
   disenchantTable: DisenchantLine[];
@@ -121,6 +135,18 @@ export const CRAFT_TAGS: CraftTag[] = [
   "Prioridade",
   "Mercado Lento",
   "Mercado Rapido",
+];
+
+export const REAGENT_CATEGORIES: ReagentCategory[] = [
+  "Metals & Stone",
+  "Cloth",
+  "Leather",
+  "Herbs",
+  "Enchanting Materials",
+  "Gems",
+  "Elemental Materials",
+  "Consumables",
+  "Miscellaneous",
 ];
 
 export const defaultSnapshot: AppSnapshot = {

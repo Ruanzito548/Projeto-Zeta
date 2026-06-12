@@ -26,13 +26,16 @@ import { Toaster, toast } from "sonner";
 import {
   CRAFT_TAGS,
   PROFESSIONS,
+  REAGENT_CATEGORIES,
   type CraftItem,
   type CraftTag,
   type DisenchantLine,
+  type ReagentCategory,
 } from "@/lib/app-types";
 import { computeCraftMetrics, formatCopper } from "@/lib/profit-engine";
 import { useAppStore } from "@/lib/app-store";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { inferCraftProfessionFromCategories, inferReagentCategory } from "@/lib/reagent-taxonomy";
 import { nowIso, uid } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -50,15 +53,23 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type SortKey = "name" | "profession" | "roi" | "profit";
+type SortKey = "name" | "profession" | "margin" | "profit" | "cost";
+
+type MissingReagentPreview = {
+  name: string;
+  quantity: number;
+  iconUrl?: string;
+  unitPrice: number;
+  category: ReagentCategory;
+};
 
 type CraftEditorState = {
   id?: string;
   name: string;
   iconUrl: string;
   profession: CraftItem["profession"];
-  requiredProfessionLevel: number;
   quantityProduced: number;
+  craftTimeMinutes?: number;
   saleValue: number;
   reagents: Array<{ id: string; reagentId: string; quantity: number }>;
   disenchantTable: DisenchantLine[];
@@ -68,9 +79,9 @@ type CraftEditorState = {
 const initialEditor: CraftEditorState = {
   name: "",
   iconUrl: "",
-  profession: "Enchanting",
-  requiredProfessionLevel: 1,
+  profession: "Other",
   quantityProduced: 1,
+  craftTimeMinutes: undefined,
   saleValue: 0,
   reagents: [{ id: uid("creag"), reagentId: "", quantity: 1 }],
   disenchantTable: [
@@ -164,7 +175,8 @@ export default function Page() {
   const [libraryProfitMin, setLibraryProfitMin] = useState("");
   const [newReagentName, setNewReagentName] = useState("");
   const [newReagentPrice, setNewReagentPrice] = useState("");
-  const [newReagentProfession, setNewReagentProfession] = useState<CraftItem["profession"]>("Enchanting");
+  const [newReagentCategory, setNewReagentCategory] = useState<ReagentCategory>("Miscellaneous");
+  const [newReagentOrigin, setNewReagentOrigin] = useState("");
   const [updatingAH, setUpdatingAH] = useState(false);
   const [ahUpdateProgress, setAhUpdateProgress] = useState("");
   const [updatingTSM, setUpdatingTSM] = useState(false);
@@ -173,6 +185,10 @@ export default function Page() {
   const [tsmAppDataFileName, setTsmAppDataFileName] = useState("");
   const [manualReagentListMode, setManualReagentListMode] = useState(true);
   const [recentlyUpdatedReagentId, setRecentlyUpdatedReagentId] = useState<string | null>(null);
+  const [reagentCategoryFilter, setReagentCategoryFilter] = useState<ReagentCategory | "ALL">("ALL");
+  const [reagentNameFilter, setReagentNameFilter] = useState("");
+  const [expandedCraftIds, setExpandedCraftIds] = useState<string[]>([]);
+  const [missingCraftReagents, setMissingCraftReagents] = useState<MissingReagentPreview[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
@@ -412,11 +428,15 @@ export default function Page() {
         return a.craft.profession.localeCompare(b.craft.profession);
       }
 
-      if (librarySort === "roi") {
+      if (librarySort === "margin") {
         return (
           Math.max(b.metrics.saleRoi, b.metrics.disenchantRoi) -
           Math.max(a.metrics.saleRoi, a.metrics.disenchantRoi)
         );
+      }
+
+      if (librarySort === "cost") {
+        return b.metrics.totalReagentCost - a.metrics.totalReagentCost;
       }
 
       return (
@@ -546,6 +566,60 @@ export default function Page() {
     return reagents.filter((row) => !row.priceLocked);
   }, [reagents]);
 
+  const filteredReagents = useMemo(() => {
+    const query = reagentNameFilter.trim().toLowerCase();
+
+    return reagents.filter((row) => {
+      if (reagentCategoryFilter !== "ALL" && row.category !== reagentCategoryFilter) {
+        return false;
+      }
+
+      if (query && !row.name.toLowerCase().includes(query)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [reagentCategoryFilter, reagentNameFilter, reagents]);
+
+  const groupedReagents = useMemo(() => {
+    return REAGENT_CATEGORIES.map((category) => ({
+      category,
+      items: filteredReagents
+        .filter((row) => row.category === category)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    })).filter((group) => group.items.length > 0);
+  }, [filteredReagents]);
+
+  const libraryRows = useMemo(() => {
+    const bestProfit = Math.max(...filteredCraftRows.map((row) => row.metrics.saleProfit), 0);
+
+    return filteredCraftRows.map((row) => {
+      const expanded = expandedCraftIds.includes(row.craft.id);
+      const reagentRows = row.craft.reagents.map((line) => {
+        const reagent = reagents.find((candidate) => candidate.id === line.reagentId);
+        const unitPrice = reagentPriceInfo.get(line.reagentId)?.effectivePrice ?? reagent?.currentPrice ?? 0;
+
+        return {
+          id: line.id,
+          name: reagent?.name ?? "Reagente nao encontrado",
+          iconUrl: reagent?.iconUrl ?? "",
+          quantity: line.quantity,
+          unitPrice,
+          totalCost: unitPrice * line.quantity,
+          category: reagent?.category ?? "Miscellaneous",
+        };
+      });
+
+      return {
+        ...row,
+        expanded,
+        isBest: row.metrics.saleProfit === bestProfit && bestProfit > 0,
+        reagentRows,
+      };
+    });
+  }, [expandedCraftIds, filteredCraftRows, reagents, reagentPriceInfo]);
+
   const productionSummary = useMemo(() => {
     const reagentNeeded = new Map<string, number>();
     let totalCost = 0;
@@ -608,17 +682,21 @@ export default function Page() {
         },
       ],
     });
+    setWowheadQuery("");
+    setMissingCraftReagents([]);
   }
 
   function startEdit(craft: CraftItem) {
     setActiveTab("crafts");
+    setWowheadQuery(craft.name);
+    setMissingCraftReagents([]);
     setEditor({
       id: craft.id,
       name: craft.name,
       iconUrl: craft.iconUrl ?? "",
       profession: craft.profession,
-      requiredProfessionLevel: craft.requiredProfessionLevel,
       quantityProduced: craft.quantityProduced,
+      craftTimeMinutes: craft.craftTimeMinutes,
       saleValue: craft.saleValue,
       reagents: craft.reagents.map((row) => ({ ...row })),
       disenchantTable: craft.disenchantTable.map((row) => ({ ...row })),
@@ -628,14 +706,19 @@ export default function Page() {
 
   function submitEditor() {
     if (!editor.name.trim()) {
-      toast.error("Informe o nome do item.");
+      toast.error("Informe o nome ou URL do item e importe os dados.");
+      return;
+    }
+
+    if (missingCraftReagents.length > 0) {
+      toast.error("Cadastre os reagentes faltantes antes de salvar o craft.");
       return;
     }
 
     const normalizedReagents = editor.reagents.filter((row) => row.reagentId && row.quantity > 0);
 
     if (normalizedReagents.length === 0) {
-      toast.error("Adicione ao menos um reagente.");
+      toast.error("Importe um item com reagentes vinculados antes de salvar.");
       return;
     }
 
@@ -682,8 +765,8 @@ export default function Page() {
         name: editor.name,
         iconUrl: editor.iconUrl,
         profession: editor.profession,
-        requiredProfessionLevel: editor.requiredProfessionLevel,
         quantityProduced: editor.quantityProduced,
+        craftTimeMinutes: editor.craftTimeMinutes,
         saleValue: editor.saleValue,
         reagents: normalizedReagents,
         disenchantTable: normalizedDE,
@@ -695,8 +778,8 @@ export default function Page() {
         name: editor.name,
         iconUrl: editor.iconUrl,
         profession: editor.profession,
-        requiredProfessionLevel: editor.requiredProfessionLevel,
         quantityProduced: editor.quantityProduced,
+        craftTimeMinutes: editor.craftTimeMinutes,
         saleValue: editor.saleValue,
         reagents: normalizedReagents,
         disenchantTable: normalizedDE,
@@ -735,6 +818,7 @@ export default function Page() {
         error?: string;
         itemName?: string;
         iconUrl?: string;
+        saleValue?: number;
         quantityPerCraft?: number;
         reagents?: Array<{ name: string; quantity: number; unitPrice: number; iconUrl?: string }>;
         disenchantTable?: Array<DisenchantLine & { iconUrl?: string }>;
@@ -745,29 +829,29 @@ export default function Page() {
       }
 
       const reagentLines: Array<{ id: string; reagentId: string; quantity: number }> = [];
+      const missing: MissingReagentPreview[] = [];
+      const categories: ReagentCategory[] = [];
 
       for (const row of payload.reagents ?? []) {
         let reagent = reagents.find((item) => item.name.toLowerCase() === row.name.toLowerCase());
+        const category = inferReagentCategory(row.name);
+
+        categories.push(category);
 
         if (!reagent) {
-          const id = createReagent({
+          missing.push({
             name: row.name,
             iconUrl: row.iconUrl ?? "",
-            profession: "Any",
-            currentPrice: row.unitPrice,
+            quantity: row.quantity,
+            unitPrice: row.unitPrice,
+            category,
           });
-          reagent = {
-            id,
-            name: row.name,
-            iconUrl: row.iconUrl ?? "",
-            profession: "Any",
-            currentPrice: row.unitPrice,
-            priceLocked: false,
-            updatedAt: nowIso(),
-            usageCount: 0,
-          };
         } else if (row.unitPrice > 0 && reagent.currentPrice <= 0 && !reagent.priceLocked) {
           updateReagentPriceWithFeedback(reagent.id, row.unitPrice);
+        }
+
+        if (!reagent) {
+          continue;
         }
 
         if ((!reagent.iconUrl || reagent.iconUrl.trim().length === 0) && row.iconUrl) {
@@ -781,10 +865,12 @@ export default function Page() {
         ...prev,
         name: payload.itemName ?? prev.name,
         iconUrl: payload.iconUrl ?? prev.iconUrl,
+        profession: inferCraftProfessionFromCategories(categories),
         quantityProduced:
           typeof payload.quantityPerCraft === "number" && payload.quantityPerCraft > 0
             ? payload.quantityPerCraft
             : prev.quantityProduced,
+        saleValue: typeof payload.saleValue === "number" && payload.saleValue > 0 ? payload.saleValue : prev.saleValue,
         reagents: reagentLines.length > 0 ? reagentLines : prev.reagents,
         disenchantTable:
           payload.disenchantTable && payload.disenchantTable.length > 0
@@ -803,6 +889,8 @@ export default function Page() {
               })
             : prev.disenchantTable,
       }));
+
+          setMissingCraftReagents(missing);
 
       // Sync disenchant material prices to reagent database.
       for (const deLine of payload.disenchantTable ?? []) {
@@ -824,16 +912,30 @@ export default function Page() {
             setReagentIcon(existing.id, deLine.iconUrl);
           }
         } else {
-          createReagent({
-            name: materialName,
-            iconUrl: deLine.iconUrl ?? "",
-            profession: "Enchanting",
-            currentPrice: materialPrice,
+          setMissingCraftReagents((current) => {
+            if (current.some((row) => row.name.toLowerCase() === materialName.toLowerCase())) {
+              return current;
+            }
+
+            return [
+              ...current,
+              {
+                name: materialName,
+                iconUrl: deLine.iconUrl ?? "",
+                quantity: Math.max(1, deLine.minQuantity),
+                unitPrice: materialPrice,
+                category: inferReagentCategory(materialName),
+              },
+            ];
           });
         }
       }
 
-      toast.success("Item importado do Wowhead.");
+      toast.success(
+        missing.length > 0
+          ? `Item importado. ${missing.length} reagentes precisam ser cadastrados na biblioteca.`
+          : "Item importado do Wowhead.",
+      );
       setWowheadQuery("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao importar Wowhead.");
@@ -860,12 +962,46 @@ export default function Page() {
       name: asName(term),
       iconUrl: "",
       profession: "Any",
+      category: inferReagentCategory(asName(term)),
+      origin: "Manual",
       currentPrice: 0,
     });
 
     addReagentToEditor(id);
     setReagentSearch("");
     toast.success("Reagente cadastrado.");
+  }
+
+  function registerMissingCraftReagents() {
+    if (missingCraftReagents.length === 0) {
+      return;
+    }
+
+    for (const row of missingCraftReagents) {
+      const exists = reagents.find((item) => item.name.toLowerCase() === row.name.toLowerCase());
+
+      if (exists) {
+        continue;
+      }
+
+      createReagent({
+        name: row.name,
+        iconUrl: row.iconUrl ?? "",
+        profession: "Any",
+        category: row.category,
+        origin: "Wowhead Import",
+        currentPrice: row.unitPrice,
+      });
+    }
+
+    setMissingCraftReagents([]);
+    toast.success("Reagentes faltantes cadastrados na biblioteca.");
+  }
+
+  function toggleCraftExpanded(craftId: string) {
+    setExpandedCraftIds((current) =>
+      current.includes(craftId) ? current.filter((value) => value !== craftId) : [...current, craftId],
+    );
   }
 
   async function loginWithGoogle() {

@@ -50,9 +50,18 @@ export async function loadSnapshotByUser(userId: string): Promise<AppSnapshot> {
     ...data,
     reagents: (data.reagents ?? []).map((reagent) => ({
       ...reagent,
+      category: reagent.category ?? "Miscellaneous",
+      origin: reagent.origin?.trim() || undefined,
       priceLocked: Boolean(reagent.priceLocked),
       craftFromReagentId: reagent.craftFromReagentId || undefined,
       craftFromQuantity: Math.max(1, Number(reagent.craftFromQuantity) || 1),
+    })),
+    crafts: (data.crafts ?? []).map((craft) => ({
+      ...craft,
+      craftTimeMinutes:
+        typeof craft.craftTimeMinutes === "number" && craft.craftTimeMinutes > 0
+          ? craft.craftTimeMinutes
+          : undefined,
     })),
     settings: {
       ...defaultSnapshot.settings,

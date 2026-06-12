@@ -13,6 +13,7 @@ type ImportPayload = {
   itemId: number;
   itemName: string;
   iconUrl: string;
+  saleValue: number;
   quantityPerCraft: number;
   reagents: Array<{
     name: string;
@@ -28,6 +29,13 @@ type ImportPayload = {
     materialPrice: number;
     iconUrl: string;
   }>;
+};
+
+type LookupPayload = {
+  itemId: number;
+  itemName: string;
+  iconUrl: string;
+  saleValue: number;
 };
 
 function parseItemId(query: string): number | null {
@@ -50,6 +58,26 @@ function parseItemId(query: string): number | null {
   }
 
   return null;
+}
+
+async function resolveItemId(query: string): Promise<{ itemId: number; itemName: string }> {
+  const directId = parseItemId(query);
+
+  if (directId) {
+    const lookup = await getAuctionPrice({ itemId: directId });
+
+    return {
+      itemId: lookup.itemId,
+      itemName: lookup.itemName,
+    };
+  }
+
+  const lookup = await getAuctionPrice({ itemName: query.trim() });
+
+  return {
+    itemId: lookup.itemId,
+    itemName: lookup.itemName,
+  };
 }
 
 function extractXmlTag(content: string, tagName: string): string {
@@ -241,21 +269,29 @@ async function getMarketPriceByName(itemName: string): Promise<number> {
 export async function GET(req: NextRequest) {
   try {
     const query = req.nextUrl.searchParams.get("query")?.trim() ?? "";
+    const mode = req.nextUrl.searchParams.get("mode")?.trim() ?? "import";
 
     if (!query) {
       return NextResponse.json({ error: "Informe um ID ou URL do item no Wowhead." }, { status: 400 });
     }
 
-    const itemId = parseItemId(query);
+    const { itemId, itemName: resolvedName } = await resolveItemId(query);
 
     if (!itemId) {
-      return NextResponse.json(
-        {
-          error:
-            "Nao foi possivel identificar o item. Use ID numerico (ex: 6238) ou URL Wowhead (ex: https://www.wowhead.com/tbc/item=6238).",
-        },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Nao foi possivel identificar o item informado." }, { status: 400 });
+    }
+
+    const saleValue = await getMarketPriceByName(resolvedName);
+
+    if (mode === "lookup") {
+      const payload: LookupPayload = {
+        itemId,
+        itemName: resolvedName,
+        iconUrl: await getWowheadIconByItemId(itemId),
+        saleValue,
+      };
+
+      return NextResponse.json(payload);
     }
 
     // Prefer TBC dataset to avoid reagent mismatches from other expansions.
@@ -296,7 +332,7 @@ export async function GET(req: NextRequest) {
       html = htmlGenericRes.ok ? await htmlGenericRes.text() : "";
     }
 
-    const itemName = extractXmlTag(xml, "name");
+    const itemName = extractXmlTag(xml, "name") || resolvedName;
     const iconName = extractIconName(xml);
     const quantityPerCraft = extractQuantityPerCraft(xml);
     const reagentsRaw = extractReagents(xml);
@@ -339,6 +375,7 @@ export async function GET(req: NextRequest) {
       iconUrl: iconName
         ? `https://wow.zamimg.com/images/wow/icons/large/${iconName}.jpg`
         : "",
+      saleValue,
       quantityPerCraft,
       reagents,
       disenchantTable,

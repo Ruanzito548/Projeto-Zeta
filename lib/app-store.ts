@@ -18,6 +18,7 @@ import { loadSnapshotByUser, saveSnapshotByUser } from "@/lib/indexeddb";
 import { loadCloudSnapshotByUser, saveCloudSnapshotByUser } from "@/lib/firestore-snapshot";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { STARTER_REAGENTS } from "@/lib/reagent-catalog";
+import { inferReagentCategory } from "@/lib/reagent-taxonomy";
 import { nowIso, uid } from "@/lib/utils";
 
 type AppState = AppSnapshot & {
@@ -102,6 +103,8 @@ function mergeStarterReagents(reagents: Reagent[]): { next: Reagent[]; addedCoun
       profession: row.profession,
       currentPrice: row.currentPrice,
       priceLocked: false,
+      category: row.category,
+      origin: row.origin,
       updatedAt: nowIso(),
       usageCount: 0,
     });
@@ -233,6 +236,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         {
           id,
           ...payload,
+          category: payload.category ?? inferReagentCategory(payload.name),
+          origin: payload.origin?.trim() || undefined,
           priceLocked: payload.priceLocked ?? false,
           craftFromReagentId: payload.craftFromReagentId || undefined,
           craftFromQuantity: Math.max(1, Number(payload.craftFromQuantity) || 1),
