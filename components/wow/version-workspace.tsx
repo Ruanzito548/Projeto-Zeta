@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { ArrowDown, ArrowRight, RefreshCw, Search } from "lucide-react";
+import { ArrowDown, ArrowRight, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,69 @@ type TsmResponse = {
   error?: string;
 };
 
+function wowheadItemUrl(version: WowVersion, itemId: number): string {
+  const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
+  return `${base}/item=${itemId}`;
+}
+
+function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): ReagentEntry[] {
+  const byId = new Map<number, ReagentEntry>();
+
+  for (const entry of existing) {
+    byId.set(entry.itemId, entry);
+  }
+
+  for (const entry of incoming) {
+    const prev = byId.get(entry.itemId);
+
+    if (!prev) {
+      byId.set(entry.itemId, entry);
+      continue;
+    }
+
+    byId.set(entry.itemId, {
+      ...entry,
+      tsmPrice: prev.tsmPrice > 0 ? prev.tsmPrice : entry.tsmPrice,
+      calculatedPrice: prev.calculatedPrice ?? entry.calculatedPrice,
+      source: prev.source || entry.source,
+      recipe: prev.recipe.length > 0 ? prev.recipe : entry.recipe,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  return Array.from(byId.values());
+}
+
+function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): ReagentEntry[] {
+  const baseEntry: ReagentEntry = {
+    itemId: item.itemId,
+    name: item.name,
+    icon: item.icon,
+    quality: item.quality,
+    wowheadUrl: item.wowheadUrl || wowheadItemUrl(version, item.itemId),
+    source: "Item importado para analise de lucro.",
+    tsmPrice: item.auctionPrice,
+    calculatedPrice: null,
+    recipe: item.recipe,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const disenchantEntries: ReagentEntry[] = item.disenchant.map((entry) => ({
+    itemId: entry.itemId,
+    name: entry.name,
+    icon: entry.icon,
+    quality: "uncommon",
+    wowheadUrl: wowheadItemUrl(version, entry.itemId),
+    source: `Resultado de disenchant de ${item.name}.`,
+    tsmPrice: 0,
+    calculatedPrice: null,
+    recipe: [],
+    updatedAt: new Date().toISOString(),
+  }));
+
+  return [baseEntry, ...disenchantEntries];
+}
+
 function formatMoney(value: number): string {
   const normalized = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
   const gold = Math.floor(normalized / 10000);
@@ -47,7 +110,7 @@ function tabLabel(tab: TabId): string {
     return "Importar Item";
   }
 
-  return "Reagentes";
+  return "Precos";
 }
 
 export function WowVersionWorkspace({ version }: { version: WowVersion }) {
@@ -178,9 +241,12 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       const uniqueReagents = [
-        ...snapshot.reagents,
-        ...importedReagents.filter(
-          (candidate) => !snapshot.reagents.some((existing) => existing.itemId === candidate.itemId),
+        ...mergePriceEntries(
+          snapshot.reagents,
+          [
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
+          ],
         ),
       ];
 
@@ -305,6 +371,27 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
+  function removeCraftItem(itemId: number, itemName: string) {
+    const confirmed = window.confirm(`Excluir ${itemName} do Dashboard?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSnapshot((prev) => ({
+      ...prev,
+      crafts: prev.crafts.filter((craft) => craft.itemId !== itemId),
+    }));
+
+    setExpandedCraftIds((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+
+    toast.success("Item removido do Dashboard.");
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -333,7 +420,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       {activeTab === "reagents" ? (
         <Card>
           <CardHeader>
-            <CardTitle>Reagentes</CardTitle>
+            <CardTitle>Precos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -414,7 +501,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   {filteredReagents.length === 0 ? (
                     <tr>
                       <td className="px-3 py-8 text-center text-slate-400" colSpan={7}>
-                        Nenhum reagente encontrado.
+                        Nenhum item encontrado.
                       </td>
                     </tr>
                   ) : null}
@@ -467,6 +554,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     <th className="px-3 py-2 text-left">Lucro Disenchant</th>
                     <th className="px-3 py-2 text-left">Lucro NPC</th>
                     <th className="px-3 py-2 text-left">Melhor</th>
+                    <th className="px-3 py-2 text-left">Acoes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -475,8 +563,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
 
                     return (
-                      <>
-                        <tr key={row.itemId} className="border-t border-amber-500/10">
+                      <tr key={row.itemId} className="border-t border-amber-500/10">
                           <td className="px-3 py-2">
                             <button
                               type="button"
@@ -509,63 +596,81 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                               {row.bestOption}
                             </Badge>
                           </td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => removeCraftItem(row.itemId, row.name)}
+                              className="inline-flex items-center gap-1 rounded border border-rose-400/30 px-2 py-1 text-xs text-rose-300 hover:bg-rose-500/10"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Excluir
+                            </button>
+                          </td>
                         </tr>
-                        {expanded && craft ? (
-                          <tr className="border-t border-amber-500/10 bg-slate-950/40">
-                            <td colSpan={10} className="px-5 py-4">
-                              <div className="grid gap-4 md:grid-cols-2">
-                                <div>
-                                  <p className="mb-2 text-sm font-semibold text-amber-200">Receita</p>
-                                  <div className="space-y-2">
-                                    {craft.recipe.map((component) => {
-                                      const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
-                                      const unit = reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0;
-                                      return (
-                                        <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded border border-amber-500/15 p-2">
-                                          <div className="flex items-center gap-2">
-                                            <img
-                                              src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
-                                              alt={component.name}
-                                              className="h-6 w-6 rounded"
-                                            />
-                                            <span>{component.quantity}x {component.name}</span>
-                                          </div>
-                                          <span>{formatMoney(component.quantity * unit)}</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                                <div>
-                                  <p className="mb-2 text-sm font-semibold text-amber-200">Disenchant</p>
-                                  <div className="space-y-2">
-                                    {craft.disenchant.length === 0 ? (
-                                      <p className="text-sm text-slate-400">Sem dados de disenchant.</p>
-                                    ) : (
-                                      craft.disenchant.map((entry) => (
-                                        <div key={`${craft.itemId}-${entry.itemId}`} className="rounded border border-amber-500/15 p-2">
-                                          <div className="flex items-center gap-2">
-                                            <img src={entry.icon} alt={entry.name} className="h-6 w-6 rounded" />
-                                            <span>{entry.name}</span>
-                                          </div>
-                                          <p className="mt-1 text-xs text-slate-300">
-                                            Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
-                                          </p>
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                </div>
+                    );
+                  })}
+                  {dashboardRows.map((row) => {
+                    const expanded = Boolean(expandedCraftIds[row.itemId]);
+                    const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
+
+                    if (!expanded || !craft) {
+                      return null;
+                    }
+
+                    return (
+                      <tr key={`expanded-${row.itemId}`} className="border-t border-amber-500/10 bg-slate-950/40">
+                        <td colSpan={11} className="px-5 py-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                              <p className="mb-2 text-sm font-semibold text-amber-200">Receita</p>
+                              <div className="space-y-2">
+                                {craft.recipe.map((component) => {
+                                  const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
+                                  const unit = reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0;
+                                  return (
+                                    <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded border border-amber-500/15 p-2">
+                                      <div className="flex items-center gap-2">
+                                        <img
+                                          src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
+                                          alt={component.name}
+                                          className="h-6 w-6 rounded"
+                                        />
+                                        <span>{component.quantity}x {component.name}</span>
+                                      </div>
+                                      <span>{formatMoney(component.quantity * unit)}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            </td>
-                          </tr>
-                        ) : null}
-                      </>
+                            </div>
+                            <div>
+                              <p className="mb-2 text-sm font-semibold text-amber-200">Disenchant</p>
+                              <div className="space-y-2">
+                                {craft.disenchant.length === 0 ? (
+                                  <p className="text-sm text-slate-400">Sem dados de disenchant.</p>
+                                ) : (
+                                  craft.disenchant.map((entry) => (
+                                    <div key={`${craft.itemId}-${entry.itemId}`} className="rounded border border-amber-500/15 p-2">
+                                      <div className="flex items-center gap-2">
+                                        <img src={entry.icon} alt={entry.name} className="h-6 w-6 rounded" />
+                                        <span>{entry.name}</span>
+                                      </div>
+                                      <p className="mt-1 text-xs text-slate-300">
+                                        Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
+                                      </p>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                   {dashboardRows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-3 py-8 text-center text-slate-400">
+                      <td colSpan={11} className="px-3 py-8 text-center text-slate-400">
                         Nenhum item importado ainda. Use a aba Importar Item.
                       </td>
                     </tr>
