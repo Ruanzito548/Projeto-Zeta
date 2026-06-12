@@ -1,14 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #d4f5d4;
-  --panel: rgba(0, 0, 0, 0.92);
-  --line: rgba(34, 197, 94, 0.35);
-  --green: #22c55e;
-  --green-dim: rgba(34, 197, 94, 0.18);
-  --ok: #4ade80;
-  --bad: #f87171;
+  --background: #030a04;
+  --foreground: #e8ffeb;
+  --panel: rgba(3, 8, 4, 0.92);
+  --line: rgba(69, 190, 95, 0.25);
+  --green-neon: #9eff8a;
+  --green-mid: #4aa84a;
+  --green-deep: #1a5a1a;
+  --ok: #9eff8a;
+  --bad: #ff7070;
   --app-font-sans: "Trebuchet MS", "Lucida Sans Unicode", "Segoe UI", sans-serif;
   --app-font-mono: "Consolas", "Courier New", monospace;
 }
@@ -22,7 +23,7 @@
 
 body {
   margin: 0;
-  background: #000000;
+  background: #030a04;
   color: var(--foreground);
   font-family: var(--font-sans);
 }

@@ -10,12 +10,12 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border border-green-400/60 bg-[linear-gradient(180deg,rgba(34,197,94,0.28),rgba(0,18,8,0.95))] text-green-50 shadow-[0_0_0_1px_rgba(34,197,94,0.35)_inset,0_0_20px_rgba(34,197,94,0.2),0_8px_24px_rgba(0,0,0,0.6)] hover:-translate-y-0.5 hover:border-green-300/80 hover:shadow-[0_0_0_1px_rgba(74,222,128,0.5)_inset,0_0_28px_rgba(34,197,94,0.3),0_12px_28px_rgba(0,0,0,0.7)]",
+          "border border-[rgba(158,255,138,0.7)] bg-[linear-gradient(180deg,#9eff8a_0%,#4aa84a_52%,#1a5a1a_100%)] text-[#f0fff0] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_8px_24px_rgba(74,168,74,0.35)] hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_12px_28px_rgba(74,168,74,0.45)]",
         secondary:
-          "border border-green-500/35 bg-[linear-gradient(180deg,rgba(0,14,5,0.97),rgba(0,8,3,0.98))] text-green-200 shadow-[0_0_0_1px_rgba(34,197,94,0.15)_inset] hover:border-green-400/55 hover:bg-[linear-gradient(180deg,rgba(0,20,8,0.97),rgba(0,12,4,0.98))] hover:text-green-100",
-        ghost: "border border-transparent bg-transparent text-green-300 hover:border-green-500/40 hover:bg-green-500/10 hover:text-green-100",
+          "border border-[rgba(120,255,140,0.3)] bg-[linear-gradient(180deg,rgba(120,255,140,0.15),rgba(20,80,30,0.3))] text-[#e0ffe0] hover:bg-[linear-gradient(180deg,rgba(150,255,170,0.22),rgba(30,100,40,0.35))] hover:border-[rgba(120,255,140,0.5)]",
+        ghost: "border border-transparent bg-transparent text-[#b8e6b8] hover:border-[rgba(120,255,140,0.3)] hover:bg-[rgba(120,255,140,0.08)] hover:text-[#e0ffe0]",
         danger:
-          "border border-red-500/45 bg-[linear-gradient(180deg,rgba(239,68,68,0.22),rgba(30,0,0,0.97))] text-red-200 shadow-[0_0_0_1px_rgba(239,68,68,0.2)_inset] hover:border-red-400/65 hover:bg-[linear-gradient(180deg,rgba(239,68,68,0.32),rgba(40,0,0,0.97))]",
+          "border border-red-500/45 bg-[linear-gradient(180deg,rgba(239,68,68,0.22),rgba(30,0,0,0.97))] text-red-200 shadow-[0_0_0_1px_rgba(239,68,68,0.2)_inset] hover:border-red-400/65 hover:brightness-110",
       },
       size: {
         default: "h-11 px-5 py-2.5",
