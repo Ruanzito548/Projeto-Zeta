@@ -602,20 +602,25 @@ export default function Page() {
 
     // Sync disenchant material prices to reagent database.
     for (const deLine of normalizedDE) {
-      if (deLine.materialPrice <= 0) continue;
+      const materialName = deLine.materialName.trim();
+
+      if (!materialName) continue;
+
+      const materialPrice = Math.max(0, Number(deLine.materialPrice) || 0);
       const existing = reagents.find(
-        (r) => r.name.toLowerCase() === deLine.materialName.toLowerCase(),
+        (r) => r.name.toLowerCase() === materialName.toLowerCase(),
       );
+
       if (existing) {
-        if (!existing.priceLocked) {
-          updateReagentPriceWithFeedback(existing.id, deLine.materialPrice);
+        if (materialPrice > 0 && !existing.priceLocked) {
+          updateReagentPriceWithFeedback(existing.id, materialPrice);
         }
       } else {
         createReagent({
-          name: deLine.materialName,
+          name: materialName,
           iconUrl: "",
           profession: "Enchanting",
-          currentPrice: deLine.materialPrice,
+          currentPrice: materialPrice,
         });
       }
     }
@@ -749,20 +754,25 @@ export default function Page() {
 
       // Sync disenchant material prices to reagent database.
       for (const deLine of payload.disenchantTable ?? []) {
-        if (!deLine.materialName.trim() || deLine.materialPrice <= 0) continue;
+        const materialName = deLine.materialName.trim();
+
+        if (!materialName) continue;
+
+        const materialPrice = Math.max(0, Number(deLine.materialPrice) || 0);
         const existing = reagents.find(
-          (r) => r.name.toLowerCase() === deLine.materialName.toLowerCase(),
+          (r) => r.name.toLowerCase() === materialName.toLowerCase(),
         );
+
         if (existing) {
-          if (!existing.priceLocked) {
-            updateReagentPriceWithFeedback(existing.id, deLine.materialPrice);
+          if (materialPrice > 0 && !existing.priceLocked) {
+            updateReagentPriceWithFeedback(existing.id, materialPrice);
           }
         } else {
           createReagent({
-            name: deLine.materialName,
+            name: materialName,
             iconUrl: "",
             profession: "Enchanting",
-            currentPrice: deLine.materialPrice,
+            currentPrice: materialPrice,
           });
         }
       }
