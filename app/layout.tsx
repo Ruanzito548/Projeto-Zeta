@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WoW TBC Craft Profit",
+  title: "Projeto Zeta",
   description: "Calculadora de lucro para crafting e disenchant no WoW TBC.",
   manifest: "/manifest.webmanifest",
 };
