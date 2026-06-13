@@ -570,7 +570,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 </span>
               </div>
               <span className="ml-9 text-xs text-[#b8e6b8]">
-                Base {formatMoney(baseUnit * component.quantity)}
+                Unidade {formatMoney(baseUnit)}
+                {component.quantity > 1 ? ` | Total (${component.quantity}x): ${formatMoney(baseUnit * component.quantity)}` : ""}
                 {isFixed ? " | Fixo" : ""}
                 {!isFixed ? ` | Ajuste (${Math.round(currentScale * 100)}%)` : ""}
               </span>
@@ -608,7 +609,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               ) : null}
             </div>
           </div>
-          <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
+          <span className="font-semibold text-[#b8e6b8]">{formatMoney(baseUnit)}</span>
         </div>
 
         {hasCraftChain && expanded ? (
