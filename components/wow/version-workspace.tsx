@@ -162,6 +162,16 @@ function buildExpectedDisenchantValue(craft: ImportedCraftItem, priceById: Map<n
   }, 0);
 }
 
+function getReagentBasePrice(reagent: ReagentEntry | undefined): number {
+  if (!reagent) {
+    return 0;
+  }
+
+  return reagent.fixedPrice && reagent.fixedPrice > 0
+    ? reagent.fixedPrice
+    : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
+}
+
 function emptySnapshot(version: WowVersion): ModuleSnapshot {
   return DEFAULT_SNAPSHOT(version);
 }
@@ -211,6 +221,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
+  const [expandedRecipeIds, setExpandedRecipeIds] = useState<Record<string, boolean>>({});
   const [appDataContent, setAppDataContent] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(`lootmaster-appdata-content-${version}`) ?? "";
@@ -296,6 +307,84 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     () => computeDashboardRows(snapshot.crafts, snapshot.reagents),
     [snapshot.crafts, snapshot.reagents],
   );
+
+  const reagentById = useMemo(
+    () => new Map(snapshot.reagents.map((entry) => [entry.itemId, entry])),
+    [snapshot.reagents],
+  );
+
+  function renderRecipeChain(
+    craftId: number,
+    component: ImportedCraftItem["recipe"][number],
+    depth = 0,
+    path = `${craftId}:${component.itemId}`,
+  ) {
+    const reagent = reagentById.get(component.itemId);
+    const hasCraftChain = reagent?.priceSource === "CRAFTING" && reagent.recipe.length > 0;
+    const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
+    const baseUnit = getReagentBasePrice(reagent);
+    const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
+    const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
+    const expanded = Boolean(expandedRecipeIds[path]);
+
+    return (
+      <div key={path} className="space-y-2">
+        <div
+          className="flex items-center justify-between rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3"
+          style={{ marginLeft: `${depth * 14}px` }}
+        >
+          <div className="flex items-center gap-3">
+            <img
+              src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
+              alt={component.name}
+              className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.22)]"
+            />
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                {hasCraftChain ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    className="h-7 w-7"
+                    onClick={() =>
+                      setExpandedRecipeIds((prev) => ({
+                        ...prev,
+                        [path]: !expanded,
+                      }))
+                    }
+                  >
+                    {expanded ? <ArrowDown className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                  </Button>
+                ) : (
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[#4a8a4a]">
+                    •
+                  </span>
+                )}
+                <span className="block text-[#e8ffeb]">
+                  {component.quantity}x {component.name}
+                </span>
+              </div>
+              <span className="ml-9 text-xs text-[#b8e6b8]">
+                Base {formatMoney(baseUnit * component.quantity)}
+                {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
+                {hasCraftChain ? " | Crafting" : ""}
+              </span>
+            </div>
+          </div>
+          <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
+        </div>
+
+        {hasCraftChain && expanded ? (
+          <div className="space-y-2">
+            {reagent.recipe.map((nestedComponent) =>
+              renderRecipeChain(craftId, nestedComponent, depth + 1, `${path}:${nestedComponent.itemId}`),
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   async function importItem() {
     if (!importInput.trim()) {
@@ -959,35 +1048,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                   <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#a8ff9f]">Receita</p>
                                   <div className="space-y-3">
-                                    {craft.recipe.map((component) => {
-                                      const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
-                                      const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
-                                      const baseUnit = reagent?.fixedPrice && reagent.fixedPrice > 0
-                                        ? reagent.fixedPrice
-                                        : (reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0);
-                                      const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
-                                      const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
-
-                                      return (
-                                        <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                          <div className="flex items-center gap-3">
-                                            <img
-                                              src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
-                                              alt={component.name}
-                                              className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.22)]"
-                                            />
-                                            <div className="space-y-0.5">
-                                              <span className="block text-[#e8ffeb]">{component.quantity}x {component.name}</span>
-                                              <span className="text-xs text-[#b8e6b8]">
-                                                Base {formatMoney(baseUnit * component.quantity)}
-                                                {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
-                                        </div>
-                                      );
-                                    })}
+                                    {craft.recipe.map((component) => renderRecipeChain(craft.itemId, component))}
                                   </div>
                                 </div>
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
