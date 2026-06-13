@@ -38,7 +38,7 @@ const SOURCE_OPTIONS: Array<{ value: PriceSource; label: string }> = [
   { value: "NPC", label: "NPC" },
 ];
 
-const AUTO_TSM_REFRESH_MS = 10 * 60 * 1000;
+const AUTO_TSM_REFRESH_MS = 1 * 60 * 1000;
 
 function wowheadItemUrl(version: WowVersion, itemId: number): string {
   const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
