@@ -119,6 +119,75 @@ function formatSignedMoney(value: number): string {
   return `${value < 0 ? "-" : ""}${formatMoney(Math.abs(value))}`;
 }
 
+function buildTotalCraftTimeSeconds(
+  craft: ImportedCraftItem,
+  reagentById: Map<number, ReagentEntry>,
+  visiting = new Set<number>(),
+): number {
+  if (visiting.has(craft.itemId)) {
+    return craft.craftTimeSeconds ?? 0;
+  }
+
+  visiting.add(craft.itemId);
+
+  let total = craft.craftTimeSeconds ?? 0;
+
+  for (const component of craft.recipe) {
+    const reagent = reagentById.get(component.itemId);
+
+    if (!reagent || reagent.priceSource !== "CRAFTING" || reagent.recipe.length === 0) {
+      continue;
+    }
+
+    const subTime = reagent.craftTimeSeconds ?? 0;
+
+    const subCraft: ImportedCraftItem = {
+      itemId: reagent.itemId,
+      wowheadUrl: reagent.wowheadUrl,
+      name: reagent.name,
+      icon: reagent.icon,
+      quality: reagent.quality,
+      profession: "Other",
+      quantityProduced: 1,
+      craftTimeSeconds: subTime,
+      recipe: reagent.recipe,
+      disenchant: [],
+      auctionPrice: 0,
+      vendorPrice: 0,
+      isCommodity: false,
+      updatedAt: reagent.updatedAt,
+    };
+
+    const subTotal = buildTotalCraftTimeSeconds(subCraft, reagentById, visiting);
+    total += subTotal * component.quantity;
+  }
+
+  visiting.delete(craft.itemId);
+  return total;
+}
+
+function formatDurationSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "N/A";
+  }
+
+  if (seconds < 60) {
+    return Number.isInteger(seconds) ? `${seconds}s` : `${seconds.toFixed(1)}s`;
+  }
+
+  const total = Math.round(seconds);
+  const minutes = Math.floor(total / 60);
+  const remaining = total % 60;
+
+  if (minutes < 60) {
+    return `${minutes}m ${remaining}s`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const minutesRemainder = minutes % 60;
+  return `${hours}h ${minutesRemainder}m ${remaining}s`;
+}
+
 function getScenarioUnitPrice(
   reagent: ReagentEntry | undefined,
   multiplier: number,
@@ -1104,6 +1173,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     <th className="px-4 py-3 text-left"></th>
                     <th className="px-4 py-3 text-left">Item</th>
                     <th className="px-4 py-3 text-left">Profissao</th>
+                    <th className="px-4 py-3 text-left">Tempo Craft</th>
                     <th className="px-4 py-3 text-left">Custo Craft</th>
                     <th className="px-4 py-3 text-left">Venda Leilao</th>
                     <th className="px-4 py-3 text-left">Venda NPC</th>
@@ -1129,6 +1199,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const npcProfitMinus25 = craft ? craft.vendorPrice - scenarioTotals.low : 0;
                     const npcProfitPlus25 = craft ? craft.vendorPrice - scenarioTotals.high : 0;
                     const craftQty = Math.max(1, dashboardCraftQtyById[row.itemId] ?? 1);
+                    const craftTimeSeconds = craft?.craftTimeSeconds ?? 0;
+                    const totalCraftTimeSeconds = craft ? buildTotalCraftTimeSeconds(craft, reagentById) : 0;
+                    const simCraftTime = totalCraftTimeSeconds * craftQty;
                     const simCraftCost = scenarioTotals.base * craftQty;
                     const simAuctionRevenue = (craft?.auctionPrice ?? 0) * craftQty;
                     const simNpcRevenue = (craft?.vendorPrice ?? 0) * craftQty;
@@ -1162,6 +1235,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                             </div>
                           </td>
                           <td className="px-4 py-4 text-[#b8e6b8]">{row.profession}</td>
+                          <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatDurationSeconds(craftTimeSeconds)}</td>
                           <td className="px-4 py-4 font-semibold text-[#b8e6b8]">{formatMoney(row.craftCost)}</td>
                           <td className="px-4 py-4 font-medium text-[#e8ffeb]">{formatMoney(row.auctionPrice)}</td>
                           <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(row.vendorPrice)}</td>
@@ -1194,9 +1268,20 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                         </tr>
                         {expanded && craft ? (
                           <tr key={`expanded-${row.itemId}`} className="border-t border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
-                            <td colSpan={11} className="px-6 py-6">
+                            <td colSpan={12} className="px-6 py-6">
                               <div className="mb-5 rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                 <div className="mb-3 flex flex-wrap items-end gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo por craft</p>
+                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(craftTimeSeconds)}</p>
+                                  </div>
+                                  {totalCraftTimeSeconds > craftTimeSeconds ? (
+                                    <div className="space-y-1">
+                                      <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo total crafting</p>
+                                      <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(totalCraftTimeSeconds)}</p>
+                                      <p className="text-[11px] text-[#4a8a4a]">inclui reagentes craftados</p>
+                                    </div>
+                                  ) : null}
                                   <div className="space-y-1">
                                     <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Simulador de crafting</p>
                                     <label className="text-xs text-[#b8e6b8]">Quantidade</label>
@@ -1211,7 +1296,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                   </div>
                                 </div>
 
-                                <div className="grid gap-3 md:grid-cols-6">
+                                <div className="grid gap-3 md:grid-cols-7">
                                   <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
                                     <p className="text-xs text-[#a8ff9f]">Custo total</p>
                                     <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simCraftCost)}</p>
@@ -1241,6 +1326,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                     <p className={`text-sm font-semibold ${simNpcProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
                                       {formatSignedMoney(simNpcProfit)}
                                     </p>
+                                  </div>
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Tempo total</p>
+                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(simCraftTime)}</p>
                                   </div>
                                 </div>
                               </div>
@@ -1334,7 +1423,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   })}
                   {dashboardRows.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-base text-[#4a8a4a]">
+                      <td colSpan={12} className="px-4 py-12 text-center text-base text-[#4a8a4a]">
                         Nenhum item importado ainda. Use a aba Importar Item.
                       </td>
                     </tr>

@@ -35,6 +35,7 @@ export interface ReagentEntry {
   tsmPrice: number;
   calculatedPrice: number | null;
   recipe: RecipeComponent[];
+  craftTimeSeconds?: number;
   updatedAt: string;
 }
 
@@ -55,6 +56,7 @@ export interface ImportedCraftItem {
   quality: Quality;
   profession: Profession;
   quantityProduced: number;
+  craftTimeSeconds?: number;
   recipe: RecipeComponent[];
   disenchant: DisenchantEntry[];
   auctionPrice: number;
