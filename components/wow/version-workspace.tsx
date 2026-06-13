@@ -222,6 +222,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [storageReady, setStorageReady] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
   const [expandedRecipeIds, setExpandedRecipeIds] = useState<Record<string, boolean>>({});
+  const [dashboardPriceScaleById, setDashboardPriceScaleById] = useState<Record<number, number>>({});
+  const [dashboardCraftQtyById, setDashboardCraftQtyById] = useState<Record<number, number>>({});
   const [appDataContent, setAppDataContent] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(`lootmaster-appdata-content-${version}`) ?? "";
@@ -303,9 +305,25 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     });
   }, [query, snapshot.reagents]);
 
+  const effectiveCrafts = useMemo(
+    () => snapshot.crafts.map((craft) => {
+      const scale = dashboardPriceScaleById[craft.itemId] ?? 1;
+      return {
+        ...craft,
+        auctionPrice: Math.max(0, Math.round(craft.auctionPrice * scale)),
+      };
+    }),
+    [snapshot.crafts, dashboardPriceScaleById],
+  );
+
   const dashboardRows = useMemo(
-    () => computeDashboardRows(snapshot.crafts, snapshot.reagents),
-    [snapshot.crafts, snapshot.reagents],
+    () => computeDashboardRows(effectiveCrafts, snapshot.reagents),
+    [effectiveCrafts, snapshot.reagents],
+  );
+
+  const effectiveCraftById = useMemo(
+    () => new Map(effectiveCrafts.map((craft) => [craft.itemId, craft])),
+    [effectiveCrafts],
   );
 
   const reagentById = useMemo(
@@ -687,6 +705,22 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     toast.success("Preco fixo adicionado com sucesso.");
   }
 
+  function updateDashboardPriceScale(itemId: number, value: number) {
+    const scale = Number.isFinite(value) ? Math.min(1.5, Math.max(0.5, value)) : 1;
+    setDashboardPriceScaleById((prev) => ({
+      ...prev,
+      [itemId]: scale,
+    }));
+  }
+
+  function updateDashboardCraftQty(itemId: number, value: number) {
+    const quantity = Number.isFinite(value) ? Math.max(1, Math.round(value)) : 1;
+    setDashboardCraftQtyById((prev) => ({
+      ...prev,
+      [itemId]: quantity,
+    }));
+  }
+
   function removeCraftItem(itemId: number, itemName: string) {
     const confirmed = window.confirm(`Excluir ${itemName} do Dashboard?`);
 
@@ -700,6 +734,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }));
 
     setExpandedCraftIds((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+
+    setDashboardPriceScaleById((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+
+    setDashboardCraftQtyById((prev) => {
       const next = { ...prev };
       delete next[itemId];
       return next;
@@ -945,7 +991,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 <tbody>
                   {dashboardRows.map((row) => {
                     const expanded = Boolean(expandedCraftIds[row.itemId]);
-                    const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
+                    const craft = effectiveCraftById.get(row.itemId);
+                    const baseCraft = snapshot.crafts.find((item) => item.itemId === row.itemId);
+                    const currentScale = dashboardPriceScaleById[row.itemId] ?? 1;
                     const priceById = new Map(
                       snapshot.reagents.map((entry) => [entry.itemId, entry.calculatedPrice ?? entry.tsmPrice]),
                     );
@@ -957,6 +1005,13 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const disenchantProfitPlus25 = craft ? disenchantValue - scenarioTotals.high : 0;
                     const npcProfitMinus25 = craft ? craft.vendorPrice - scenarioTotals.low : 0;
                     const npcProfitPlus25 = craft ? craft.vendorPrice - scenarioTotals.high : 0;
+                    const craftQty = Math.max(1, dashboardCraftQtyById[row.itemId] ?? 1);
+                    const simCraftCost = scenarioTotals.base * craftQty;
+                    const simAuctionRevenue = (craft?.auctionPrice ?? 0) * craftQty;
+                    const simNpcRevenue = (craft?.vendorPrice ?? 0) * craftQty;
+                    const simAuctionProfit = (row.auctionProfit ?? 0) * craftQty;
+                    const simDisenchantProfit = (row.disenchantProfit ?? 0) * craftQty;
+                    const simNpcProfit = (row.npcProfit ?? 0) * craftQty;
 
                     return (
                       <>
@@ -985,7 +1040,25 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           </td>
                           <td className="px-4 py-4 text-[#b8e6b8]">{row.profession}</td>
                           <td className="px-4 py-4 font-semibold text-[#b8e6b8]">{formatMoney(row.craftCost)}</td>
-                          <td className="px-4 py-4 font-medium text-[#e8ffeb]">{formatMoney(row.auctionPrice)}</td>
+                          <td className="px-4 py-4 font-medium text-[#e8ffeb]">
+                            <div className="space-y-2">
+                              <div>{formatMoney(row.auctionPrice)}</div>
+                              <div className="space-y-1">
+                                <input
+                                  type="range"
+                                  min={50}
+                                  max={150}
+                                  step={1}
+                                  value={Math.round(currentScale * 100)}
+                                  onChange={(event) => updateDashboardPriceScale(row.itemId, Number(event.target.value) / 100)}
+                                  className="w-full accent-[#9eff8a]"
+                                />
+                                <div className="text-xs text-[#b8e6b8]">
+                                  Base TSM: {formatMoney(baseCraft?.auctionPrice ?? 0)} | Ajuste: {Math.round(currentScale * 100)}%
+                                </div>
+                              </div>
+                            </div>
+                          </td>
                           <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(row.vendorPrice)}</td>
                           <td className={`px-4 py-4 font-semibold ${row.auctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
                             {formatMoney(Math.max(0, row.auctionProfit))}
@@ -1017,6 +1090,56 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                         {expanded && craft ? (
                           <tr key={`expanded-${row.itemId}`} className="border-t border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
                             <td colSpan={11} className="px-6 py-6">
+                              <div className="mb-5 rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                <div className="mb-3 flex flex-wrap items-end gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Simulador de crafting</p>
+                                    <label className="text-xs text-[#b8e6b8]">Quantidade</label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      value={craftQty}
+                                      onChange={(event) => updateDashboardCraftQty(row.itemId, Number(event.target.value))}
+                                      className="h-10 w-28 rounded-md border border-[rgba(69,190,95,0.3)] bg-[rgba(3,8,4,0.7)] px-3 text-[#e8ffeb]"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-6">
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Custo total</p>
+                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simCraftCost)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Receita leilao</p>
+                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simAuctionRevenue)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Receita NPC</p>
+                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simNpcRevenue)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Lucro leilao</p>
+                                    <p className={`text-sm font-semibold ${simAuctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+                                      {formatSignedMoney(simAuctionProfit)}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Lucro disenchant</p>
+                                    <p className={`text-sm font-semibold ${simDisenchantProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+                                      {formatSignedMoney(simDisenchantProfit)}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                    <p className="text-xs text-[#a8ff9f]">Lucro NPC</p>
+                                    <p className={`text-sm font-semibold ${simNpcProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+                                      {formatSignedMoney(simNpcProfit)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
                               <div className="mb-5 grid gap-3 md:grid-cols-4">
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                   <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
