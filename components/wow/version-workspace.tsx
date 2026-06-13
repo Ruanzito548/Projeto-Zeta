@@ -38,6 +38,8 @@ const SOURCE_OPTIONS: Array<{ value: PriceSource; label: string }> = [
   { value: "NPC", label: "NPC" },
 ];
 
+const AUTO_TSM_REFRESH_MS = 10 * 60 * 1000;
+
 function wowheadItemUrl(version: WowVersion, itemId: number): string {
   const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
   return `${base}/item=${itemId}`;
@@ -483,6 +485,20 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     void saveSnapshotToCloud(snapshot);
   }, [snapshot, storageReady]);
 
+  useEffect(() => {
+    if (snapshot.reagents.length === 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshTsmPrices({ silent: true });
+    }, AUTO_TSM_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [snapshot.reagents, appDataContent]);
+
   const filteredReagents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
@@ -766,9 +782,17 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
-  async function refreshTsmPrices() {
+  async function refreshTsmPrices(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+
+    if (syncingPrices) {
+      return;
+    }
+
     if (snapshot.reagents.length === 0) {
-      toast.error("Nao ha reagentes cadastrados para atualizar.");
+      if (!silent) {
+        toast.error("Nao ha reagentes cadastrados para atualizar.");
+      }
       return;
     }
 
@@ -836,9 +860,13 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         };
       });
 
-      toast.success("Precos atualizados via TSM.");
+      if (!silent) {
+        toast.success("Precos atualizados via TSM.");
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao atualizar precos.");
+      if (!silent) {
+        toast.error(error instanceof Error ? error.message : "Erro ao atualizar precos.");
+      }
     } finally {
       setSyncingPrices(false);
     }
@@ -861,6 +889,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     } catch {
       toast.error("Nao foi possivel ler o arquivo AppData.lua.");
     }
+  }
+
+  function useAutomaticTsmAppData() {
+    setAppDataContent("");
+    setAppDataFileName("");
+    window.localStorage.removeItem(`lootmaster-appdata-content-${version}`);
+    window.localStorage.removeItem(`lootmaster-appdata-filename-${version}`);
+    toast.success("Modo automatico ativado. O servidor vai ler o AppData.lua local a cada atualizacao.");
   }
 
   function updatePriceSource(itemId: number, source: PriceSource) {
@@ -1048,7 +1084,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={refreshTsmPrices} disabled={syncingPrices} className="h-11">
+              <Button onClick={() => void refreshTsmPrices()} disabled={syncingPrices} className="h-11">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
               </Button>
@@ -1061,6 +1097,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   onChange={onSelectTsmAppData}
                 />
               </label>
+              <Button
+                onClick={useAutomaticTsmAppData}
+                variant="secondary"
+                className="h-11"
+                disabled={!appDataFileName && !appDataContent.trim()}
+              >
+                Usar AppData local automatico
+              </Button>
               <Badge variant="info" className="h-8">
                 Ultima atualizacao: {snapshot.lastTsmSyncAt ? new Date(snapshot.lastTsmSyncAt).toLocaleString() : "nunca"}
               </Badge>
