@@ -215,16 +215,12 @@ function buildCraftScenarioTotals(
     (accumulator, component) => {
       const reagent = reagents.find((entry) => entry.itemId === component.itemId);
       const baseUnit = getScenarioUnitPrice(reagent, 1, craftingScaleById);
-      const lowUnit = getScenarioUnitPrice(reagent, 0.75, craftingScaleById);
-      const highUnit = getScenarioUnitPrice(reagent, 1.25, craftingScaleById);
 
       return {
         base: accumulator.base + baseUnit * component.quantity,
-        low: accumulator.low + lowUnit * component.quantity,
-        high: accumulator.high + highUnit * component.quantity,
       };
     },
-    { base: 0, low: 0, high: 0 },
+    { base: 0 },
   );
 }
 
@@ -528,8 +524,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
     const currentScale = dashboardCraftingScaleById[component.itemId] ?? 1;
     const baseUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
-    const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
-    const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
     const expanded = Boolean(expandedRecipeIds[path]);
 
     return (
@@ -572,7 +566,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               </div>
               <span className="ml-9 text-xs text-[#b8e6b8]">
                 Base {formatMoney(baseUnit * component.quantity)}
-                {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
+                {isFixed ? " | Fixo" : ""}
                 {!isFixed ? ` | Ajuste (${Math.round(currentScale * 100)}%)` : ""}
               </span>
               {!isFixed ? (
@@ -1260,14 +1254,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const craft = effectiveCraftById.get(row.itemId);
                     const scenarioTotals = craft
                       ? buildCraftScenarioTotals(craft, snapshot.reagents, dashboardCraftingScaleById)
-                      : { base: 0, low: 0, high: 0 };
+                      : { base: 0 };
                     const disenchantValue = craft ? buildExpectedDisenchantValue(craft, adjustedPriceById) : 0;
-                    const auctionProfitMinus25 = craft ? craft.auctionPrice - scenarioTotals.low : 0;
-                    const auctionProfitPlus25 = craft ? craft.auctionPrice - scenarioTotals.high : 0;
-                    const disenchantProfitMinus25 = craft ? disenchantValue - scenarioTotals.low : 0;
-                    const disenchantProfitPlus25 = craft ? disenchantValue - scenarioTotals.high : 0;
-                    const npcProfitMinus25 = craft ? craft.vendorPrice - scenarioTotals.low : 0;
-                    const npcProfitPlus25 = craft ? craft.vendorPrice - scenarioTotals.high : 0;
                     const craftQty = Math.max(1, dashboardCraftQtyById[row.itemId] ?? 1);
                     const craftTimeSeconds = craft?.craftTimeSeconds ?? 0;
                     const totalCraftTimeSeconds = craft ? buildTotalCraftTimeSeconds(craft, reagentById) : 0;
@@ -1425,26 +1413,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                   <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
                                   <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatMoney(scenarioTotals.base)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatMoney(scenarioTotals.low)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatMoney(scenarioTotals.high)}</p>
                                 </div>
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                   <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro leilão</p>
                                   <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(craft.auctionPrice - scenarioTotals.base)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(auctionProfitMinus25)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(auctionProfitPlus25)}</p>
                                 </div>
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                   <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro disenchant</p>
                                   <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.disenchantProfit)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(disenchantProfitMinus25)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(disenchantProfitPlus25)}</p>
                                 </div>
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                   <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro NPC</p>
                                   <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.npcProfit)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(npcProfitMinus25)}</p>
-                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(npcProfitPlus25)}</p>
                                 </div>
                               </div>
 
