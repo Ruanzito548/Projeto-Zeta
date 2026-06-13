@@ -33,6 +33,38 @@ function parseNumberTag(xml: string, tag: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseSellPriceFromTooltip(htmlTooltip: string): number {
+  if (!htmlTooltip) {
+    return 0;
+  }
+
+  const gold = Number(htmlTooltip.match(/class="moneygold">(\d+)</i)?.[1] ?? "0");
+  const silver = Number(htmlTooltip.match(/class="moneysilver">(\d+)</i)?.[1] ?? "0");
+  const copper = Number(htmlTooltip.match(/class="moneycopper">(\d+)</i)?.[1] ?? "0");
+
+  const total = (Number.isFinite(gold) ? gold : 0) * 10000
+    + (Number.isFinite(silver) ? silver : 0) * 100
+    + (Number.isFinite(copper) ? copper : 0);
+
+  return total > 0 ? total : 0;
+}
+
+function parseSellPrice(xml: string): number {
+  const direct = parseNumberTag(xml, "sellprice");
+  if (direct > 0) {
+    return direct;
+  }
+
+  const jsonEquip = parseTag(xml, "jsonEquip");
+  const jsonMatch = Number(jsonEquip.match(/"sellprice":(\d+)/i)?.[1] ?? "0");
+  if (Number.isFinite(jsonMatch) && jsonMatch > 0) {
+    return jsonMatch;
+  }
+
+  const htmlTooltip = parseTag(xml, "htmlTooltip");
+  return parseSellPriceFromTooltip(htmlTooltip);
+}
+
 function parseIcon(xml: string): string {
   const icon = parseTag(xml, "icon").toLowerCase();
   if (!icon) {
@@ -366,7 +398,7 @@ export async function importCraftItemFromWowhead(
     recipe,
     disenchant,
     auctionPrice: 0,
-    vendorPrice: parseNumberTag(xml, "sellprice"),
+    vendorPrice: parseSellPrice(xml),
     isCommodity: guessCommodityByName(name),
     updatedAt: new Date().toISOString(),
   };
