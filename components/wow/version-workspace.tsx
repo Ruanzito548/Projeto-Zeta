@@ -116,6 +116,52 @@ function formatMoney(value: number): string {
   return `${gold}g ${silver}s ${copper}c`;
 }
 
+function formatSignedMoney(value: number): string {
+  return `${value < 0 ? "-" : ""}${formatMoney(Math.abs(value))}`;
+}
+
+function getScenarioUnitPrice(reagent: ReagentEntry | undefined, multiplier: number): number {
+  if (!reagent) {
+    return 0;
+  }
+
+  const basePrice = reagent.fixedPrice && reagent.fixedPrice > 0
+    ? reagent.fixedPrice
+    : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
+
+  if (reagent.fixedPrice && reagent.fixedPrice > 0) {
+    return basePrice;
+  }
+
+  return basePrice * multiplier;
+}
+
+function buildCraftScenarioTotals(craft: ImportedCraftItem, reagents: ReagentEntry[]) {
+  return craft.recipe.reduce(
+    (accumulator, component) => {
+      const reagent = reagents.find((entry) => entry.itemId === component.itemId);
+      const baseUnit = getScenarioUnitPrice(reagent, 1);
+      const lowUnit = getScenarioUnitPrice(reagent, 0.75);
+      const highUnit = getScenarioUnitPrice(reagent, 1.25);
+
+      return {
+        base: accumulator.base + baseUnit * component.quantity,
+        low: accumulator.low + lowUnit * component.quantity,
+        high: accumulator.high + highUnit * component.quantity,
+      };
+    },
+    { base: 0, low: 0, high: 0 },
+  );
+}
+
+function buildExpectedDisenchantValue(craft: ImportedCraftItem, priceById: Map<number, number>): number {
+  return craft.disenchant.reduce((total, row) => {
+    const price = priceById.get(row.itemId) ?? 0;
+    const averageQty = (row.min + row.max) / 2;
+    return total + price * averageQty * row.chance;
+  }, 0);
+}
+
 function emptySnapshot(version: WowVersion): ModuleSnapshot {
   return DEFAULT_SNAPSHOT(version);
 }
@@ -877,16 +923,60 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                       return null;
                     }
 
+                    const priceById = new Map(
+                      snapshot.reagents.map((entry) => [entry.itemId, entry.calculatedPrice ?? entry.tsmPrice]),
+                    );
+                    const scenarioTotals = buildCraftScenarioTotals(craft, snapshot.reagents);
+                    const disenchantValue = buildExpectedDisenchantValue(craft, priceById);
+                    const auctionProfitMinus25 = craft.auctionPrice - scenarioTotals.low;
+                    const auctionProfitPlus25 = craft.auctionPrice - scenarioTotals.high;
+                    const disenchantProfitMinus25 = disenchantValue - scenarioTotals.low;
+                    const disenchantProfitPlus25 = disenchantValue - scenarioTotals.high;
+                    const npcProfitMinus25 = craft.vendorPrice - scenarioTotals.low;
+                    const npcProfitPlus25 = craft.vendorPrice - scenarioTotals.high;
+
                     return (
                       <tr key={`expanded-${row.itemId}`} className="border-t border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
                         <td colSpan={11} className="px-6 py-6">
+                          <div className="mb-5 grid gap-3 md:grid-cols-4">
+                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
+                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatMoney(scenarioTotals.base)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatMoney(scenarioTotals.low)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatMoney(scenarioTotals.high)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro leilão</p>
+                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(craft.auctionPrice - scenarioTotals.base)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(auctionProfitMinus25)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(auctionProfitPlus25)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro disenchant</p>
+                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.disenchantProfit)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(disenchantProfitMinus25)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(disenchantProfitPlus25)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro NPC</p>
+                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.npcProfit)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(npcProfitMinus25)}</p>
+                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(npcProfitPlus25)}</p>
+                            </div>
+                          </div>
+
                           <div className="grid gap-5 md:grid-cols-2">
                             <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                               <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#a8ff9f]">Receita</p>
                               <div className="space-y-3">
                                 {craft.recipe.map((component) => {
                                   const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
-                                  const unit = reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0;
+                                  const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
+                                  const baseUnit = reagent?.fixedPrice && reagent.fixedPrice > 0
+                                    ? reagent.fixedPrice
+                                    : (reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0);
+                                  const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
+                                  const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
                                   return (
                                     <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
                                       <div className="flex items-center gap-3">
@@ -895,9 +985,15 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                           alt={component.name}
                                           className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.22)]"
                                         />
-                                        <span className="text-[#e8ffeb]">{component.quantity}x {component.name}</span>
+                                        <div className="space-y-0.5">
+                                          <span className="block text-[#e8ffeb]">{component.quantity}x {component.name}</span>
+                                          <span className="text-xs text-[#b8e6b8]">
+                                            Base {formatMoney(baseUnit * component.quantity)}
+                                            {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * unit)}</span>
+                                      <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
                                     </div>
                                   );
                                 })}
