@@ -857,9 +857,21 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   {dashboardRows.map((row) => {
                     const expanded = Boolean(expandedCraftIds[row.itemId]);
                     const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
+                    const priceById = new Map(
+                      snapshot.reagents.map((entry) => [entry.itemId, entry.calculatedPrice ?? entry.tsmPrice]),
+                    );
+                    const scenarioTotals = craft ? buildCraftScenarioTotals(craft, snapshot.reagents) : { base: 0, low: 0, high: 0 };
+                    const disenchantValue = craft ? buildExpectedDisenchantValue(craft, priceById) : 0;
+                    const auctionProfitMinus25 = craft ? craft.auctionPrice - scenarioTotals.low : 0;
+                    const auctionProfitPlus25 = craft ? craft.auctionPrice - scenarioTotals.high : 0;
+                    const disenchantProfitMinus25 = craft ? disenchantValue - scenarioTotals.low : 0;
+                    const disenchantProfitPlus25 = craft ? disenchantValue - scenarioTotals.high : 0;
+                    const npcProfitMinus25 = craft ? craft.vendorPrice - scenarioTotals.low : 0;
+                    const npcProfitPlus25 = craft ? craft.vendorPrice - scenarioTotals.high : 0;
 
                     return (
-                      <tr key={row.itemId} className="border-t border-[rgba(69,190,95,0.2)] transition-colors hover:bg-[rgba(120,220,140,0.06)]">
+                      <>
+                        <tr key={row.itemId} className="border-t border-[rgba(69,190,95,0.2)] transition-colors hover:bg-[rgba(120,220,140,0.06)]">
                           <td className="px-4 py-4">
                             <Button
                               type="button"
@@ -913,115 +925,96 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                             </Button>
                           </td>
                         </tr>
-                    );
-                  })}
-                  {dashboardRows.map((row) => {
-                    const expanded = Boolean(expandedCraftIds[row.itemId]);
-                    const craft = snapshot.crafts.find((item) => item.itemId === row.itemId);
+                        {expanded && craft ? (
+                          <tr key={`expanded-${row.itemId}`} className="border-t border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
+                            <td colSpan={11} className="px-6 py-6">
+                              <div className="mb-5 grid gap-3 md:grid-cols-4">
+                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
+                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatMoney(scenarioTotals.base)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatMoney(scenarioTotals.low)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatMoney(scenarioTotals.high)}</p>
+                                </div>
+                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro leilão</p>
+                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(craft.auctionPrice - scenarioTotals.base)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(auctionProfitMinus25)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(auctionProfitPlus25)}</p>
+                                </div>
+                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro disenchant</p>
+                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.disenchantProfit)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(disenchantProfitMinus25)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(disenchantProfitPlus25)}</p>
+                                </div>
+                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro NPC</p>
+                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.npcProfit)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(npcProfitMinus25)}</p>
+                                  <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(npcProfitPlus25)}</p>
+                                </div>
+                              </div>
 
-                    if (!expanded || !craft) {
-                      return null;
-                    }
+                              <div className="grid gap-5 md:grid-cols-2">
+                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#a8ff9f]">Receita</p>
+                                  <div className="space-y-3">
+                                    {craft.recipe.map((component) => {
+                                      const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
+                                      const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
+                                      const baseUnit = reagent?.fixedPrice && reagent.fixedPrice > 0
+                                        ? reagent.fixedPrice
+                                        : (reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0);
+                                      const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
+                                      const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
 
-                    const priceById = new Map(
-                      snapshot.reagents.map((entry) => [entry.itemId, entry.calculatedPrice ?? entry.tsmPrice]),
-                    );
-                    const scenarioTotals = buildCraftScenarioTotals(craft, snapshot.reagents);
-                    const disenchantValue = buildExpectedDisenchantValue(craft, priceById);
-                    const auctionProfitMinus25 = craft.auctionPrice - scenarioTotals.low;
-                    const auctionProfitPlus25 = craft.auctionPrice - scenarioTotals.high;
-                    const disenchantProfitMinus25 = disenchantValue - scenarioTotals.low;
-                    const disenchantProfitPlus25 = disenchantValue - scenarioTotals.high;
-                    const npcProfitMinus25 = craft.vendorPrice - scenarioTotals.low;
-                    const npcProfitPlus25 = craft.vendorPrice - scenarioTotals.high;
-
-                    return (
-                      <tr key={`expanded-${row.itemId}`} className="border-t border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
-                        <td colSpan={11} className="px-6 py-6">
-                          <div className="mb-5 grid gap-3 md:grid-cols-4">
-                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
-                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatMoney(scenarioTotals.base)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatMoney(scenarioTotals.low)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatMoney(scenarioTotals.high)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro leilão</p>
-                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(craft.auctionPrice - scenarioTotals.base)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(auctionProfitMinus25)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(auctionProfitPlus25)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro disenchant</p>
-                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.disenchantProfit)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(disenchantProfitMinus25)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(disenchantProfitPlus25)}</p>
-                            </div>
-                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro NPC</p>
-                              <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.npcProfit)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes -25%: {formatSignedMoney(npcProfitMinus25)}</p>
-                              <p className="text-sm text-[#b8e6b8]">Reagentes +25%: {formatSignedMoney(npcProfitPlus25)}</p>
-                            </div>
-                          </div>
-
-                          <div className="grid gap-5 md:grid-cols-2">
-                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#a8ff9f]">Receita</p>
-                              <div className="space-y-3">
-                                {craft.recipe.map((component) => {
-                                  const reagent = snapshot.reagents.find((entry) => entry.itemId === component.itemId);
-                                  const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
-                                  const baseUnit = reagent?.fixedPrice && reagent.fixedPrice > 0
-                                    ? reagent.fixedPrice
-                                    : (reagent?.calculatedPrice ?? reagent?.tsmPrice ?? 0);
-                                  const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
-                                  const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
-                                  return (
-                                    <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                      <div className="flex items-center gap-3">
-                                        <img
-                                          src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
-                                          alt={component.name}
-                                          className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.22)]"
-                                        />
-                                        <div className="space-y-0.5">
-                                          <span className="block text-[#e8ffeb]">{component.quantity}x {component.name}</span>
-                                          <span className="text-xs text-[#b8e6b8]">
-                                            Base {formatMoney(baseUnit * component.quantity)}
-                                            {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
-                                          </span>
+                                      return (
+                                        <div key={`${craft.itemId}-${component.itemId}`} className="flex items-center justify-between rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                          <div className="flex items-center gap-3">
+                                            <img
+                                              src={reagent?.icon ?? "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg"}
+                                              alt={component.name}
+                                              className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.22)]"
+                                            />
+                                            <div className="space-y-0.5">
+                                              <span className="block text-[#e8ffeb]">{component.quantity}x {component.name}</span>
+                                              <span className="text-xs text-[#b8e6b8]">
+                                                Base {formatMoney(baseUnit * component.quantity)}
+                                                {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
                                         </div>
-                                      </div>
-                                      <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
-                                    </div>
-                                  );
-                                })}
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+                                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#b8e6b8]">Disenchant</p>
+                                  <div className="space-y-3">
+                                    {craft.disenchant.length === 0 ? (
+                                      <p className="text-sm text-[#4a8a4a]">Sem dados de disenchant.</p>
+                                    ) : (
+                                      craft.disenchant.map((entry) => (
+                                        <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                                          <div className="flex items-center gap-3">
+                                            <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.2)]" />
+                                            <span className="text-[#e8ffeb]">{entry.name}</span>
+                                          </div>
+                                          <p className="mt-1.5 text-xs text-[#b8e6b8]">
+                                            Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
+                                          </p>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#b8e6b8]">Disenchant</p>
-                              <div className="space-y-3">
-                                {craft.disenchant.length === 0 ? (
-                                  <p className="text-sm text-[#4a8a4a]">Sem dados de disenchant.</p>
-                                ) : (
-                                  craft.disenchant.map((entry) => (
-                                    <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                      <div className="flex items-center gap-3">
-                                        <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.2)]" />
-                                        <span className="text-[#e8ffeb]">{entry.name}</span>
-                                      </div>
-                                      <p className="mt-1.5 text-xs text-[#b8e6b8]">
-                                        Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
-                                      </p>
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </>
                     );
                   })}
                   {dashboardRows.length === 0 ? (
