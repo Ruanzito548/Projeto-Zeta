@@ -949,6 +949,23 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     toast.success("Item removido do Dashboard.");
   }
 
+  function removeReagent(itemId: number, itemName: string) {
+    const confirmed = window.confirm(`Excluir ${itemName} de Precos?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSnapshot((prev) => ({
+      ...prev,
+      reagents: applyCalculatedReagentPrices(
+        prev.reagents.filter((entry) => entry.itemId !== itemId),
+      ),
+    }));
+
+    toast.success(`${itemName} removido de Precos.`);
+  }
+
   return (
     <div className="space-y-7">
       <Card className="overflow-hidden">
@@ -1057,6 +1074,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     <th className="px-4 py-3 text-left">Valor Fixado</th>
                     <th className="px-4 py-3 text-left">Acao</th>
                     <th className="px-4 py-3 text-left">Wowhead</th>
+                    <th className="px-4 py-3 text-left">Excluir</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1119,11 +1137,23 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           Abrir
                         </a>
                       </td>
+                      <td className="px-4 py-4">
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          onClick={() => removeReagent(entry.itemId, entry.name)}
+                          className="inline-flex items-center gap-1.5"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Excluir
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                   {filteredReagents.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-12 text-center text-base text-[#4a8a4a]" colSpan={10}>
+                      <td className="px-4 py-12 text-center text-base text-[#4a8a4a]" colSpan={11}>
                         Nenhum item encontrado.
                       </td>
                     </tr>
