@@ -180,23 +180,19 @@ function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleBy
     return 0;
   }
 
-  const base = reagent.fixedPrice && reagent.fixedPrice > 0
-    ? reagent.fixedPrice
-    : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
-
-  if (reagent.priceSource !== "CRAFTING") {
-    return safePrice(base);
+  if (reagent.fixedPrice && reagent.fixedPrice > 0) {
+    return safePrice(reagent.fixedPrice);
   }
 
+  const base = reagent.calculatedPrice ?? reagent.tsmPrice ?? 0;
   const scale = craftingScaleById[reagent.itemId] ?? 1;
   return safePrice(base) * scale;
 }
 
-function buildDashboardRowsWithCraftingScale(
-  crafts: ImportedCraftItem[],
+function buildAdjustedPriceById(
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
-): DashboardRow[] {
+): Map<number, number> {
   const byId = new Map<number, ReagentEntry>(reagents.map((entry) => [entry.itemId, entry]));
   const memo = new Map<number, number>();
 
@@ -208,7 +204,7 @@ function buildDashboardRowsWithCraftingScale(
 
     if (visiting.has(itemId)) {
       const reagent = byId.get(itemId);
-      const fallback = safePrice(reagent?.tsmPrice);
+      const fallback = getAdjustedBasePrice(reagent, craftingScaleById);
       memo.set(itemId, fallback);
       return fallback;
     }
@@ -223,8 +219,8 @@ function buildDashboardRowsWithCraftingScale(
 
     let value = 0;
 
-    if (reagent.priceSource === "NPC") {
-      value = safePrice(reagent.fixedPrice) > 0 ? safePrice(reagent.fixedPrice) : safePrice(reagent.tsmPrice);
+    if (reagent.fixedPrice && reagent.fixedPrice > 0) {
+      value = safePrice(reagent.fixedPrice);
     } else if (reagent.priceSource === "CRAFTING") {
       const recipeCost = reagent.recipe.reduce((total, component) => {
         return total + resolveCost(component.itemId, visiting) * component.quantity;
@@ -234,7 +230,9 @@ function buildDashboardRowsWithCraftingScale(
       const scale = craftingScaleById[reagent.itemId] ?? 1;
       value = baseCraftValue * scale;
     } else {
-      value = safePrice(reagent.tsmPrice);
+      const baseValue = reagent.calculatedPrice ?? reagent.tsmPrice ?? 0;
+      const scale = craftingScaleById[reagent.itemId] ?? 1;
+      value = safePrice(baseValue) * scale;
     }
 
     visiting.delete(itemId);
@@ -248,6 +246,16 @@ function buildDashboardRowsWithCraftingScale(
   for (const reagent of reagents) {
     priceById.set(reagent.itemId, resolveCost(reagent.itemId));
   }
+
+  return priceById;
+}
+
+function buildDashboardRowsWithCraftingScale(
+  crafts: ImportedCraftItem[],
+  reagents: ReagentEntry[],
+  craftingScaleById: Record<number, number>,
+): DashboardRow[] {
+  const priceById = buildAdjustedPriceById(reagents, craftingScaleById);
 
   return crafts.map((craft) => {
     const craftCost = craft.recipe.reduce((total, component) => {
@@ -425,6 +433,11 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     [snapshot.crafts, snapshot.reagents, dashboardCraftingScaleById],
   );
 
+  const adjustedPriceById = useMemo(
+    () => buildAdjustedPriceById(snapshot.reagents, dashboardCraftingScaleById),
+    [snapshot.reagents, dashboardCraftingScaleById],
+  );
+
   const effectiveCraftById = useMemo(
     () => new Map(snapshot.crafts.map((craft) => [craft.itemId, craft])),
     [snapshot.crafts],
@@ -443,9 +456,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   ) {
     const reagent = reagentById.get(component.itemId);
     const hasCraftChain = reagent?.priceSource === "CRAFTING" && reagent.recipe.length > 0;
-    const isCrafting = reagent?.priceSource === "CRAFTING";
-    const craftingScale = isCrafting ? (dashboardCraftingScaleById[component.itemId] ?? 1) : 1;
     const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
+    const currentScale = dashboardCraftingScaleById[component.itemId] ?? 1;
     const baseUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
     const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
     const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
@@ -492,26 +504,20 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               <span className="ml-9 text-xs text-[#b8e6b8]">
                 Base {formatMoney(baseUnit * component.quantity)}
                 {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
-                {isCrafting ? ` | Crafting (${Math.round(craftingScale * 100)}%)` : ""}
+                {!isFixed ? ` | Ajuste (${Math.round(currentScale * 100)}%)` : ""}
               </span>
-              {isCrafting ? (
+              {!isFixed ? (
                 <div className="ml-9 mt-1 flex items-center gap-2">
                   <input
                     type="range"
                     min={50}
                     max={150}
                     step={1}
-                    value={Math.round(craftingScale * 100)}
-                    onChange={(event) => {
-                      const value = Number(event.target.value) / 100;
-                      setDashboardCraftingScaleById((prev) => ({
-                        ...prev,
-                        [component.itemId]: Math.min(1.5, Math.max(0.5, value)),
-                      }));
-                    }}
+                    value={Math.round(currentScale * 100)}
+                    onChange={(event) => updateDashboardReagentScale(component.itemId, Number(event.target.value) / 100)}
                     className="w-36 accent-[#9eff8a]"
                   />
-                  <span className="text-[11px] text-[#a8ff9f]">{Math.round(craftingScale * 100)}%</span>
+                  <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                 </div>
               ) : null}
             </div>
@@ -839,6 +845,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }));
   }
 
+  function updateDashboardReagentScale(itemId: number, value: number) {
+    const scale = Number.isFinite(value) ? Math.min(1.5, Math.max(0.5, value)) : 1;
+    setDashboardCraftingScaleById((prev) => ({
+      ...prev,
+      [itemId]: scale,
+    }));
+  }
+
   function removeCraftItem(itemId: number, itemName: string) {
     const confirmed = window.confirm(`Excluir ${itemName} do Dashboard?`);
 
@@ -1104,13 +1118,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   {dashboardRows.map((row) => {
                     const expanded = Boolean(expandedCraftIds[row.itemId]);
                     const craft = effectiveCraftById.get(row.itemId);
-                    const priceById = new Map(
-                      snapshot.reagents.map((entry) => [entry.itemId, entry.calculatedPrice ?? entry.tsmPrice]),
-                    );
                     const scenarioTotals = craft
                       ? buildCraftScenarioTotals(craft, snapshot.reagents, dashboardCraftingScaleById)
                       : { base: 0, low: 0, high: 0 };
-                    const disenchantValue = craft ? buildExpectedDisenchantValue(craft, priceById) : 0;
+                    const disenchantValue = craft ? buildExpectedDisenchantValue(craft, adjustedPriceById) : 0;
                     const auctionProfitMinus25 = craft ? craft.auctionPrice - scenarioTotals.low : 0;
                     const auctionProfitPlus25 = craft ? craft.auctionPrice - scenarioTotals.high : 0;
                     const disenchantProfitMinus25 = craft ? disenchantValue - scenarioTotals.low : 0;
@@ -1276,13 +1287,39 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                     ) : (
                                       craft.disenchant.map((entry) => (
                                         <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                          <div className="flex items-center gap-3">
-                                            <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.2)]" />
-                                            <span className="text-[#e8ffeb]">{entry.name}</span>
-                                          </div>
-                                          <p className="mt-1.5 text-xs text-[#b8e6b8]">
-                                            Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max}
-                                          </p>
+                                          {(() => {
+                                            const reagent = reagentById.get(entry.itemId);
+                                            const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
+                                            const currentScale = dashboardCraftingScaleById[entry.itemId] ?? 1;
+                                            const adjustedUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
+
+                                            return (
+                                              <>
+                                                <div className="flex items-center gap-3">
+                                                  <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.2)]" />
+                                                  <span className="text-[#e8ffeb]">{entry.name}</span>
+                                                </div>
+                                                <p className="mt-1.5 text-xs text-[#b8e6b8]">
+                                                  Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max} | Preco: {formatMoney(adjustedUnit)}
+                                                  {isFixed ? " | Fixo" : ` | Ajuste: ${Math.round(currentScale * 100)}%`}
+                                                </p>
+                                                {!isFixed ? (
+                                                  <div className="mt-2 flex items-center gap-2">
+                                                    <input
+                                                      type="range"
+                                                      min={50}
+                                                      max={150}
+                                                      step={1}
+                                                      value={Math.round(currentScale * 100)}
+                                                      onChange={(event) => updateDashboardReagentScale(entry.itemId, Number(event.target.value) / 100)}
+                                                      className="w-36 accent-[#9eff8a]"
+                                                    />
+                                                    <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
+                                                  </div>
+                                                ) : null}
+                                              </>
+                                            );
+                                          })()}
                                         </div>
                                       ))
                                     )}
