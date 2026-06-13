@@ -195,6 +195,26 @@ function formatDurationSeconds(seconds: number): string {
   return `${hours}h ${minutesRemainder}m ${remaining}s`;
 }
 
+function formatDateTime(timestamp: string | null): string {
+  if (!timestamp) {
+    return "nunca";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "nunca";
+  }
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
+}
+
 function getScenarioUnitPrice(
   reagent: ReagentEntry | undefined,
   multiplier: number,
@@ -1106,7 +1126,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 Usar AppData local automatico
               </Button>
               <Badge variant="info" className="h-8">
-                Ultima atualizacao: {snapshot.lastTsmSyncAt ? new Date(snapshot.lastTsmSyncAt).toLocaleString() : "nunca"}
+                Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
               </Badge>
             </div>
 
