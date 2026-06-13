@@ -589,6 +589,24 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                 </div>
               ) : null}
+              {reagent?.priceSource === "CRAFTING" ? (
+                <div className="ml-9 mt-1 flex items-center gap-2">
+                  <span className="text-[11px] text-[#4a8a4a]">Tempo craft (seg):</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    placeholder="0"
+                    defaultValue={(reagent.craftTimeSeconds ?? 0) > 0 ? reagent.craftTimeSeconds : ""}
+                    key={`reagent-time-${component.itemId}-${reagent.craftTimeSeconds}`}
+                    onBlur={(event) => updateReagentCraftTime(component.itemId, event.target.value)}
+                    className="h-7 w-20 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb] placeholder-[#3a6a3a]"
+                  />
+                  {(reagent.craftTimeSeconds ?? 0) > 0 ? (
+                    <span className="text-[11px] text-[#9eff8a]">{formatDurationSeconds(reagent.craftTimeSeconds!)}</span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
           <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
@@ -919,6 +937,28 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     setDashboardCraftingScaleById((prev) => ({
       ...prev,
       [itemId]: scale,
+    }));
+  }
+
+  function updateCraftItemTime(itemId: number, rawValue: string) {
+    const parsed = Number(rawValue.trim().replace(",", "."));
+    const seconds = Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 10) / 10 : undefined;
+    setSnapshot((prev) => ({
+      ...prev,
+      crafts: prev.crafts.map((craft) =>
+        craft.itemId === itemId ? { ...craft, craftTimeSeconds: seconds } : craft,
+      ),
+    }));
+  }
+
+  function updateReagentCraftTime(itemId: number, rawValue: string) {
+    const parsed = Number(rawValue.trim().replace(",", "."));
+    const seconds = Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 10) / 10 : undefined;
+    setSnapshot((prev) => ({
+      ...prev,
+      reagents: prev.reagents.map((entry) =>
+        entry.itemId === itemId ? { ...entry, craftTimeSeconds: seconds } : entry,
+      ),
     }));
   }
 
@@ -1265,7 +1305,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                             </div>
                           </td>
                           <td className="px-4 py-4 text-[#b8e6b8]">{row.profession}</td>
-                          <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatDurationSeconds(craftTimeSeconds)}</td>
+                          <td className="px-4 py-4 font-medium text-[#b8e6b8]">
+                            {craftTimeSeconds > 0 ? formatDurationSeconds(craftTimeSeconds) : <span className="text-[#3a6a3a]">-</span>}
+                          </td>
                           <td className="px-4 py-4 font-semibold text-[#b8e6b8]">{formatMoney(row.craftCost)}</td>
                           <td className="px-4 py-4 font-medium text-[#e8ffeb]">{formatMoney(row.auctionPrice)}</td>
                           <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(row.vendorPrice)}</td>
@@ -1302,8 +1344,23 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                               <div className="mb-5 rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
                                 <div className="mb-3 flex flex-wrap items-end gap-3">
                                   <div className="space-y-1">
-                                    <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo por craft</p>
-                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(craftTimeSeconds)}</p>
+                                    <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo por craft (seg)</p>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step={0.1}
+                                        placeholder="ex: 2.5"
+                                        defaultValue={craftTimeSeconds > 0 ? craftTimeSeconds : ""}
+                                        key={`craft-time-${row.itemId}-${craftTimeSeconds}`}
+                                        onBlur={(event) => updateCraftItemTime(row.itemId, event.target.value)}
+                                        className="h-9 w-28 rounded-md border border-[rgba(69,190,95,0.3)] bg-[rgba(3,8,4,0.7)] px-3 text-sm text-[#e8ffeb] placeholder-[#3a6a3a]"
+                                      />
+                                      {craftTimeSeconds > 0 ? (
+                                        <span className="text-xs text-[#9eff8a]">{formatDurationSeconds(craftTimeSeconds)}</span>
+                                      ) : null}
+                                    </div>
+                                    <p className="text-[11px] text-[#3a6a3a]">0 = cast imediato | cooldown ex: 86400 = 1 dia</p>
                                   </div>
                                   {totalCraftTimeSeconds > craftTimeSeconds ? (
                                     <div className="space-y-1">

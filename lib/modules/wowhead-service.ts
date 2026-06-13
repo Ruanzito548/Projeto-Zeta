@@ -81,24 +81,6 @@ function parseProducedQuantity(xml: string): number {
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
-function parseCraftTimeSeconds(xml: string): number {
-  const spellAttrs = xml.match(/<spell\b([^>]*)\/?>/i)?.[1] ?? "";
-
-  if (!spellAttrs) {
-    return 0;
-  }
-
-  const raw = spellAttrs.match(/\b(?:castTime|cast|casttime)="(\d+)"/i)?.[1] ?? "0";
-  const parsed = Number(raw);
-
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0;
-  }
-
-  const seconds = parsed >= 100 ? parsed / 1000 : parsed;
-  return Math.round(seconds * 10) / 10;
-}
-
 function parseProfession(xml: string): Profession {
   const raw = xml.match(/<spell[^>]*skill="([^"]+)"/i)?.[1]?.trim();
   const allowed: Profession[] = [
@@ -342,8 +324,6 @@ export async function importReagentFromWowhead(itemId: number, version: WowVersi
   const xml = await fetchWowheadXml(itemId, version);
   const recipe = parseRecipe(xml);
   const name = parseTag(xml, "name") || `Item ${itemId}`;
-  const craftTimeSeconds = parseCraftTimeSeconds(xml);
-
   return {
     itemId,
     name,
@@ -356,7 +336,6 @@ export async function importReagentFromWowhead(itemId: number, version: WowVersi
     tsmPrice: 0,
     calculatedPrice: null,
     recipe,
-    craftTimeSeconds: craftTimeSeconds > 0 ? craftTimeSeconds : undefined,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -384,7 +363,6 @@ export async function importCraftItemFromWowhead(
     quality: parseQuality(xml),
     profession: parseProfession(xml),
     quantityProduced: parseProducedQuantity(xml),
-    craftTimeSeconds: parseCraftTimeSeconds(xml),
     recipe,
     disenchant,
     auctionPrice: 0,
