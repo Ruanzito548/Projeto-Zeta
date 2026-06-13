@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import {
-  computeDashboardRows,
   applyCalculatedReagentPrices,
 } from "@/lib/modules/pricing-engine";
 import {
@@ -20,7 +19,7 @@ import {
   saveSnapshotToCloud,
 } from "@/lib/modules/storage";
 import { VERSION_REAGENT_SEEDS } from "@/lib/modules/catalog";
-import type { ImportedCraftItem, ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
+import type { DashboardRow, ImportedCraftItem, ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
 import { DEFAULT_SNAPSHOT } from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
 
@@ -120,14 +119,16 @@ function formatSignedMoney(value: number): string {
   return `${value < 0 ? "-" : ""}${formatMoney(Math.abs(value))}`;
 }
 
-function getScenarioUnitPrice(reagent: ReagentEntry | undefined, multiplier: number): number {
+function getScenarioUnitPrice(
+  reagent: ReagentEntry | undefined,
+  multiplier: number,
+  craftingScaleById: Record<number, number>,
+): number {
   if (!reagent) {
     return 0;
   }
 
-  const basePrice = reagent.fixedPrice && reagent.fixedPrice > 0
-    ? reagent.fixedPrice
-    : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
+  const basePrice = getAdjustedBasePrice(reagent, craftingScaleById);
 
   if (reagent.fixedPrice && reagent.fixedPrice > 0) {
     return basePrice;
@@ -136,13 +137,17 @@ function getScenarioUnitPrice(reagent: ReagentEntry | undefined, multiplier: num
   return basePrice * multiplier;
 }
 
-function buildCraftScenarioTotals(craft: ImportedCraftItem, reagents: ReagentEntry[]) {
+function buildCraftScenarioTotals(
+  craft: ImportedCraftItem,
+  reagents: ReagentEntry[],
+  craftingScaleById: Record<number, number>,
+) {
   return craft.recipe.reduce(
     (accumulator, component) => {
       const reagent = reagents.find((entry) => entry.itemId === component.itemId);
-      const baseUnit = getScenarioUnitPrice(reagent, 1);
-      const lowUnit = getScenarioUnitPrice(reagent, 0.75);
-      const highUnit = getScenarioUnitPrice(reagent, 1.25);
+      const baseUnit = getScenarioUnitPrice(reagent, 1, craftingScaleById);
+      const lowUnit = getScenarioUnitPrice(reagent, 0.75, craftingScaleById);
+      const highUnit = getScenarioUnitPrice(reagent, 1.25, craftingScaleById);
 
       return {
         base: accumulator.base + baseUnit * component.quantity,
@@ -162,14 +167,124 @@ function buildExpectedDisenchantValue(craft: ImportedCraftItem, priceById: Map<n
   }, 0);
 }
 
-function getReagentBasePrice(reagent: ReagentEntry | undefined): number {
+function safePrice(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return value;
+}
+
+function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleById: Record<number, number>): number {
   if (!reagent) {
     return 0;
   }
 
-  return reagent.fixedPrice && reagent.fixedPrice > 0
+  const base = reagent.fixedPrice && reagent.fixedPrice > 0
     ? reagent.fixedPrice
     : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
+
+  if (reagent.priceSource !== "CRAFTING") {
+    return safePrice(base);
+  }
+
+  const scale = craftingScaleById[reagent.itemId] ?? 1;
+  return safePrice(base) * scale;
+}
+
+function buildDashboardRowsWithCraftingScale(
+  crafts: ImportedCraftItem[],
+  reagents: ReagentEntry[],
+  craftingScaleById: Record<number, number>,
+): DashboardRow[] {
+  const byId = new Map<number, ReagentEntry>(reagents.map((entry) => [entry.itemId, entry]));
+  const memo = new Map<number, number>();
+
+  function resolveCost(itemId: number, visiting = new Set<number>()): number {
+    const cached = memo.get(itemId);
+    if (typeof cached === "number") {
+      return cached;
+    }
+
+    if (visiting.has(itemId)) {
+      const reagent = byId.get(itemId);
+      const fallback = safePrice(reagent?.tsmPrice);
+      memo.set(itemId, fallback);
+      return fallback;
+    }
+
+    const reagent = byId.get(itemId);
+    if (!reagent) {
+      memo.set(itemId, 0);
+      return 0;
+    }
+
+    visiting.add(itemId);
+
+    let value = 0;
+
+    if (reagent.priceSource === "NPC") {
+      value = safePrice(reagent.fixedPrice) > 0 ? safePrice(reagent.fixedPrice) : safePrice(reagent.tsmPrice);
+    } else if (reagent.priceSource === "CRAFTING") {
+      const recipeCost = reagent.recipe.reduce((total, component) => {
+        return total + resolveCost(component.itemId, visiting) * component.quantity;
+      }, 0);
+
+      const baseCraftValue = recipeCost > 0 ? recipeCost : safePrice(reagent.tsmPrice);
+      const scale = craftingScaleById[reagent.itemId] ?? 1;
+      value = baseCraftValue * scale;
+    } else {
+      value = safePrice(reagent.tsmPrice);
+    }
+
+    visiting.delete(itemId);
+
+    const normalized = safePrice(value);
+    memo.set(itemId, normalized);
+    return normalized;
+  }
+
+  const priceById = new Map<number, number>();
+  for (const reagent of reagents) {
+    priceById.set(reagent.itemId, resolveCost(reagent.itemId));
+  }
+
+  return crafts.map((craft) => {
+    const craftCost = craft.recipe.reduce((total, component) => {
+      const unit = priceById.get(component.itemId) ?? 0;
+      return total + unit * component.quantity;
+    }, 0);
+
+    const auctionProfit = craft.auctionPrice - craftCost;
+    const npcProfit = craft.vendorPrice - craftCost;
+    const disenchantProfit = buildExpectedDisenchantValue(craft, priceById) - craftCost;
+
+    let bestOption: DashboardRow["bestOption"] = "NPC";
+    let winnerValue = npcProfit;
+
+    if (disenchantProfit > winnerValue) {
+      bestOption = "DISENCHANT";
+      winnerValue = disenchantProfit;
+    }
+
+    if (craft.isCommodity && auctionProfit > winnerValue) {
+      bestOption = "AUCTION";
+    }
+
+    return {
+      itemId: craft.itemId,
+      name: craft.name,
+      icon: craft.icon,
+      profession: craft.profession,
+      craftCost,
+      auctionPrice: craft.auctionPrice,
+      vendorPrice: craft.vendorPrice,
+      auctionProfit,
+      disenchantProfit,
+      npcProfit,
+      bestOption,
+    };
+  });
 }
 
 function emptySnapshot(version: WowVersion): ModuleSnapshot {
@@ -222,7 +337,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [storageReady, setStorageReady] = useState(false);
   const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
   const [expandedRecipeIds, setExpandedRecipeIds] = useState<Record<string, boolean>>({});
-  const [dashboardPriceScaleById, setDashboardPriceScaleById] = useState<Record<number, number>>({});
+  const [dashboardCraftingScaleById, setDashboardCraftingScaleById] = useState<Record<number, number>>({});
   const [dashboardCraftQtyById, setDashboardCraftQtyById] = useState<Record<number, number>>({});
   const [appDataContent, setAppDataContent] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -305,25 +420,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     });
   }, [query, snapshot.reagents]);
 
-  const effectiveCrafts = useMemo(
-    () => snapshot.crafts.map((craft) => {
-      const scale = dashboardPriceScaleById[craft.itemId] ?? 1;
-      return {
-        ...craft,
-        auctionPrice: Math.max(0, Math.round(craft.auctionPrice * scale)),
-      };
-    }),
-    [snapshot.crafts, dashboardPriceScaleById],
-  );
-
   const dashboardRows = useMemo(
-    () => computeDashboardRows(effectiveCrafts, snapshot.reagents),
-    [effectiveCrafts, snapshot.reagents],
+    () => buildDashboardRowsWithCraftingScale(snapshot.crafts, snapshot.reagents, dashboardCraftingScaleById),
+    [snapshot.crafts, snapshot.reagents, dashboardCraftingScaleById],
   );
 
   const effectiveCraftById = useMemo(
-    () => new Map(effectiveCrafts.map((craft) => [craft.itemId, craft])),
-    [effectiveCrafts],
+    () => new Map(snapshot.crafts.map((craft) => [craft.itemId, craft])),
+    [snapshot.crafts],
   );
 
   const reagentById = useMemo(
@@ -339,8 +443,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   ) {
     const reagent = reagentById.get(component.itemId);
     const hasCraftChain = reagent?.priceSource === "CRAFTING" && reagent.recipe.length > 0;
+    const isCrafting = reagent?.priceSource === "CRAFTING";
+    const craftingScale = isCrafting ? (dashboardCraftingScaleById[component.itemId] ?? 1) : 1;
     const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
-    const baseUnit = getReagentBasePrice(reagent);
+    const baseUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
     const lowUnit = isFixed ? baseUnit : baseUnit * 0.75;
     const highUnit = isFixed ? baseUnit : baseUnit * 1.25;
     const expanded = Boolean(expandedRecipeIds[path]);
@@ -386,8 +492,28 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               <span className="ml-9 text-xs text-[#b8e6b8]">
                 Base {formatMoney(baseUnit * component.quantity)}
                 {isFixed ? " | Fixo" : ` | -25% ${formatMoney(lowUnit * component.quantity)} | +25% ${formatMoney(highUnit * component.quantity)}`}
-                {hasCraftChain ? " | Crafting" : ""}
+                {isCrafting ? ` | Crafting (${Math.round(craftingScale * 100)}%)` : ""}
               </span>
+              {isCrafting ? (
+                <div className="ml-9 mt-1 flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={50}
+                    max={150}
+                    step={1}
+                    value={Math.round(craftingScale * 100)}
+                    onChange={(event) => {
+                      const value = Number(event.target.value) / 100;
+                      setDashboardCraftingScaleById((prev) => ({
+                        ...prev,
+                        [component.itemId]: Math.min(1.5, Math.max(0.5, value)),
+                      }));
+                    }}
+                    className="w-36 accent-[#9eff8a]"
+                  />
+                  <span className="text-[11px] text-[#a8ff9f]">{Math.round(craftingScale * 100)}%</span>
+                </div>
+              ) : null}
             </div>
           </div>
           <span className="font-semibold text-[#b8e6b8]">{formatMoney(component.quantity * baseUnit)}</span>
@@ -705,14 +831,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     toast.success("Preco fixo adicionado com sucesso.");
   }
 
-  function updateDashboardPriceScale(itemId: number, value: number) {
-    const scale = Number.isFinite(value) ? Math.min(1.5, Math.max(0.5, value)) : 1;
-    setDashboardPriceScaleById((prev) => ({
-      ...prev,
-      [itemId]: scale,
-    }));
-  }
-
   function updateDashboardCraftQty(itemId: number, value: number) {
     const quantity = Number.isFinite(value) ? Math.max(1, Math.round(value)) : 1;
     setDashboardCraftQtyById((prev) => ({
@@ -734,12 +852,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }));
 
     setExpandedCraftIds((prev) => {
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
-
-    setDashboardPriceScaleById((prev) => {
       const next = { ...prev };
       delete next[itemId];
       return next;
@@ -992,12 +1104,12 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   {dashboardRows.map((row) => {
                     const expanded = Boolean(expandedCraftIds[row.itemId]);
                     const craft = effectiveCraftById.get(row.itemId);
-                    const baseCraft = snapshot.crafts.find((item) => item.itemId === row.itemId);
-                    const currentScale = dashboardPriceScaleById[row.itemId] ?? 1;
                     const priceById = new Map(
                       snapshot.reagents.map((entry) => [entry.itemId, entry.calculatedPrice ?? entry.tsmPrice]),
                     );
-                    const scenarioTotals = craft ? buildCraftScenarioTotals(craft, snapshot.reagents) : { base: 0, low: 0, high: 0 };
+                    const scenarioTotals = craft
+                      ? buildCraftScenarioTotals(craft, snapshot.reagents, dashboardCraftingScaleById)
+                      : { base: 0, low: 0, high: 0 };
                     const disenchantValue = craft ? buildExpectedDisenchantValue(craft, priceById) : 0;
                     const auctionProfitMinus25 = craft ? craft.auctionPrice - scenarioTotals.low : 0;
                     const auctionProfitPlus25 = craft ? craft.auctionPrice - scenarioTotals.high : 0;
@@ -1040,25 +1152,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           </td>
                           <td className="px-4 py-4 text-[#b8e6b8]">{row.profession}</td>
                           <td className="px-4 py-4 font-semibold text-[#b8e6b8]">{formatMoney(row.craftCost)}</td>
-                          <td className="px-4 py-4 font-medium text-[#e8ffeb]">
-                            <div className="space-y-2">
-                              <div>{formatMoney(row.auctionPrice)}</div>
-                              <div className="space-y-1">
-                                <input
-                                  type="range"
-                                  min={50}
-                                  max={150}
-                                  step={1}
-                                  value={Math.round(currentScale * 100)}
-                                  onChange={(event) => updateDashboardPriceScale(row.itemId, Number(event.target.value) / 100)}
-                                  className="w-full accent-[#9eff8a]"
-                                />
-                                <div className="text-xs text-[#b8e6b8]">
-                                  Base TSM: {formatMoney(baseCraft?.auctionPrice ?? 0)} | Ajuste: {Math.round(currentScale * 100)}%
-                                </div>
-                              </div>
-                            </div>
-                          </td>
+                          <td className="px-4 py-4 font-medium text-[#e8ffeb]">{formatMoney(row.auctionPrice)}</td>
                           <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(row.vendorPrice)}</td>
                           <td className={`px-4 py-4 font-semibold ${row.auctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
                             {formatMoney(Math.max(0, row.auctionProfit))}
