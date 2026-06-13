@@ -119,6 +119,11 @@ function formatSignedMoney(value: number): string {
   return `${value < 0 ? "-" : ""}${formatMoney(Math.abs(value))}`;
 }
 
+function formatSignedPercent(value: number): string {
+  const normalized = Number.isFinite(value) ? value : 0;
+  return `${normalized < 0 ? "-" : ""}${Math.abs(normalized).toFixed(1)}%`;
+}
+
 function buildTotalCraftTimeSeconds(
   craft: ImportedCraftItem,
   reagentById: Map<number, ReagentEntry>,
@@ -1266,6 +1271,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const simAuctionProfit = (row.auctionProfit ?? 0) * craftQty;
                     const simDisenchantProfit = (row.disenchantProfit ?? 0) * craftQty;
                     const simNpcProfit = (row.npcProfit ?? 0) * craftQty;
+                    const auctionProfitPercent = row.craftCost > 0 ? (row.auctionProfit / row.craftCost) * 100 : 0;
+                    const disenchantProfitPercent = row.craftCost > 0 ? (row.disenchantProfit / row.craftCost) * 100 : 0;
+                    const npcProfitPercent = row.craftCost > 0 ? (row.npcProfit / row.craftCost) * 100 : 0;
 
                     return (
                       <>
@@ -1299,14 +1307,17 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                           <td className="px-4 py-4 font-semibold text-[#b8e6b8]">{formatMoney(row.craftCost)}</td>
                           <td className="px-4 py-4 font-medium text-[#e8ffeb]">{formatMoney(row.auctionPrice)}</td>
                           <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(row.vendorPrice)}</td>
-                          <td className={`px-4 py-4 font-semibold ${row.auctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
-                            {formatMoney(Math.max(0, row.auctionProfit))}
+                          <td className={`px-4 py-4 ${row.auctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+                            <div className="font-semibold">{formatSignedMoney(row.auctionProfit)}</div>
+                            <div className="text-xs opacity-90">{formatSignedPercent(auctionProfitPercent)}</div>
                           </td>
-                          <td className={`px-4 py-4 font-semibold ${row.disenchantProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
-                            {formatMoney(Math.max(0, row.disenchantProfit))}
+                          <td className={`px-4 py-4 ${row.disenchantProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+                            <div className="font-semibold">{formatSignedMoney(row.disenchantProfit)}</div>
+                            <div className="text-xs opacity-90">{formatSignedPercent(disenchantProfitPercent)}</div>
                           </td>
-                          <td className={`px-4 py-4 font-semibold ${row.npcProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
-                            {formatMoney(Math.max(0, row.npcProfit))}
+                          <td className={`px-4 py-4 ${row.npcProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+                            <div className="font-semibold">{formatSignedMoney(row.npcProfit)}</div>
+                            <div className="text-xs opacity-90">{formatSignedPercent(npcProfitPercent)}</div>
                           </td>
                           <td className="px-4 py-4">
                             <Badge variant={row.bestOption === "AUCTION" ? "success" : row.bestOption === "DISENCHANT" ? "info" : "warning"}>
