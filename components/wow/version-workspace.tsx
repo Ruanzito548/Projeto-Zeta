@@ -157,6 +157,21 @@ function formatMoney(value: number): string {
   return `${gold}g ${silver}s ${copper}c`;
 }
 
+function parseCopperInput(rawValue: string): number | null {
+  const normalized = rawValue.trim().replace(",", ".");
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return Math.round(parsed);
+}
+
 function formatSignedMoney(value: number): string {
   return `${value < 0 ? "-" : ""}${formatMoney(Math.abs(value))}`;
 }
@@ -475,6 +490,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [expandedRecipeIds, setExpandedRecipeIds] = useState<Record<string, boolean>>({});
   const [dashboardCraftingScaleById, setDashboardCraftingScaleById] = useState<Record<number, number>>({});
   const [dashboardCraftQtyById, setDashboardCraftQtyById] = useState<Record<number, number>>({});
+  const [dashboardPriceDraftById, setDashboardPriceDraftById] = useState<Record<number, string>>({});
   const [appDataContent, setAppDataContent] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem(`lootmaster-appdata-content-${version}`) ?? "";
@@ -787,17 +803,19 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     type="number"
                     min={0}
                     step={1}
-                    defaultValue={Math.round(baseUnit)}
-                    key={`scale-price-${path}-${Math.round(baseUnit)}`}
-                    onBlur={(event) => updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.target.value)}
+                    value={getDashboardPriceInputValue(component.itemId, baseUnit)}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => updateDashboardPriceDraft(component.itemId, event.target.value)}
+                    onBlur={(event) => commitDashboardPriceDraft(component.itemId, baseUnit, event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
-                        updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.currentTarget.value);
+                        event.preventDefault();
+                        event.currentTarget.blur();
                       }
                     }}
                     className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
                     aria-label={`Preco ajustado de ${component.name}`}
                   />
+                  <span className="text-[11px] text-[#b8e6b8]">{getDashboardPricePreview(component.itemId, baseUnit)}</span>
                   <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                 </div>
               ) : null}
@@ -1251,14 +1269,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }));
   }
   function updateDashboardReagentScaleFromUnitPrice(itemId: number, currentUnitPrice: number, rawValue: string) {
-    const normalizedRaw = rawValue.trim().replace(",", ".");
-
-    if (!normalizedRaw) {
-      return;
-    }
-
-    const parsed = Number(normalizedRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    const parsed = parseCopperInput(rawValue);
+    if (parsed === null || parsed <= 0) {
       return;
     }
 
@@ -1270,6 +1282,50 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
 
     updateDashboardReagentScale(itemId, parsed / baseWithoutScale);
+  }
+
+  function updateDashboardPriceDraft(itemId: number, rawValue: string) {
+    setDashboardPriceDraftById((prev) => ({
+      ...prev,
+      [itemId]: rawValue,
+    }));
+  }
+
+  function clearDashboardPriceDraft(itemId: number) {
+    setDashboardPriceDraftById((prev) => {
+      if (!(itemId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  }
+
+  function commitDashboardPriceDraft(itemId: number, currentUnitPrice: number, rawValue: string) {
+    updateDashboardReagentScaleFromUnitPrice(itemId, currentUnitPrice, rawValue);
+    clearDashboardPriceDraft(itemId);
+  }
+
+  function getDashboardPriceInputValue(itemId: number, currentUnitPrice: number): string {
+    const draft = dashboardPriceDraftById[itemId];
+    if (typeof draft === "string") {
+      return draft;
+    }
+
+    return String(Math.round(currentUnitPrice));
+  }
+
+  function getDashboardPricePreview(itemId: number, currentUnitPrice: number): string {
+    const draft = dashboardPriceDraftById[itemId];
+    const parsed = parseCopperInput(typeof draft === "string" ? draft : String(currentUnitPrice));
+
+    if (parsed === null) {
+      return "valor invalido";
+    }
+
+    return formatMoney(parsed);
   }
 
   function freezeDashboardSortOrder() {
@@ -1287,6 +1343,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   function updateCraftItemTime(itemId: number, rawValue: string) {
     const parsed = Number(rawValue.trim().replace(",", "."));
     const seconds = Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 10) / 10 : undefined;
+
     if (dashboardScope === "personal") {
       setPersonalSnapshot((prev) => ({
         ...prev,
@@ -1992,17 +2049,19 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                                       type="number"
                                                       min={0}
                                                       step={1}
-                                                      defaultValue={Math.round(adjustedUnit)}
-                                                      key={`scale-price-disenchant-${craft.itemId}-${entry.itemId}-${Math.round(adjustedUnit)}`}
-                                                      onBlur={(event) => updateDashboardReagentScaleFromUnitPrice(entry.itemId, adjustedUnit, event.target.value)}
+                                                      value={getDashboardPriceInputValue(entry.itemId, adjustedUnit)}
+                                                      onChange={(event: ChangeEvent<HTMLInputElement>) => updateDashboardPriceDraft(entry.itemId, event.target.value)}
+                                                      onBlur={(event) => commitDashboardPriceDraft(entry.itemId, adjustedUnit, event.target.value)}
                                                       onKeyDown={(event) => {
                                                         if (event.key === "Enter") {
-                                                          updateDashboardReagentScaleFromUnitPrice(entry.itemId, adjustedUnit, event.currentTarget.value);
+                                                          event.preventDefault();
+                                                          event.currentTarget.blur();
                                                         }
                                                       }}
                                                       className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
                                                       aria-label={`Preco ajustado de ${entry.name}`}
                                                     />
+                                                    <span className="text-[11px] text-[#b8e6b8]">{getDashboardPricePreview(entry.itemId, adjustedUnit)}</span>
                                                     <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                                                   </div>
                                                 ) : null}
