@@ -80,10 +80,27 @@ function parseQuality(xml: string): Quality {
   return qualityById[qualityId] ?? "common";
 }
 
+function parsePrimaryCreatedBySpell(xml: string): string {
+  const createdBySection = xml.match(/<createdBy\b[^>]*>([\s\S]*?)<\/createdBy>/i)?.[1] ?? "";
+  const scope = createdBySection || xml;
+
+  const spellMatches = Array.from(scope.matchAll(/<spell\b[^>]*>[\s\S]*?<\/spell>/gi));
+
+  for (const match of spellMatches) {
+    const spellXml = match[0] ?? "";
+    if (/<reagent\b[^>]*\/>/i.test(spellXml)) {
+      return spellXml;
+    }
+  }
+
+  return spellMatches[0]?.[0] ?? "";
+}
+
 function parseRecipe(xml: string): RecipeComponent[] {
   const recipe: RecipeComponent[] = [];
+  const recipeScope = parsePrimaryCreatedBySpell(xml) || xml;
 
-  for (const row of xml.matchAll(/<reagent\b([^>]*)\/>/gi)) {
+  for (const row of recipeScope.matchAll(/<reagent\b([^>]*)\/>/gi)) {
     const attrs = row[1] ?? "";
     const idRaw = attrs.match(/\bid="(\d+)"/i)?.[1] ?? "";
     const qtyRaw = attrs.match(/\bcount="(\d+)"/i)?.[1] ?? "1";
@@ -108,13 +125,18 @@ function parseRecipe(xml: string): RecipeComponent[] {
 }
 
 function parseProducedQuantity(xml: string): number {
-  const raw = xml.match(/<spell[^>]*maxCount="(\d+)"/i)?.[1] ?? "1";
+  const spellXml = parsePrimaryCreatedBySpell(xml);
+  const raw = spellXml.match(/<spell[^>]*maxCount="(\d+)"/i)?.[1]
+    ?? xml.match(/<spell[^>]*maxCount="(\d+)"/i)?.[1]
+    ?? "1";
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
 function parseProfession(xml: string): Profession {
-  const raw = xml.match(/<spell[^>]*skill="([^"]+)"/i)?.[1]?.trim();
+  const spellXml = parsePrimaryCreatedBySpell(xml);
+  const raw = spellXml.match(/<spell[^>]*skill="([^"]+)"/i)?.[1]?.trim()
+    ?? xml.match(/<spell[^>]*skill="([^"]+)"/i)?.[1]?.trim();
   const allowed: Profession[] = [
     "Alchemy",
     "Blacksmithing",
