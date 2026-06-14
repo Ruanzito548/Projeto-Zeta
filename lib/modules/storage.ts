@@ -1,11 +1,23 @@
-import type { ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
-import { DEFAULT_SNAPSHOT } from "@/lib/modules/types";
+import type {
+  ModuleSnapshot,
+  PersonalDashboardSnapshot,
+  PriceSource,
+  ReagentEntry,
+} from "@/lib/modules/types";
+import {
+  DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT,
+  DEFAULT_SNAPSHOT,
+} from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 function storageKey(version: WowVersion): string {
   return `lootmaster-v2-${version}`;
+}
+
+function personalStorageKey(version: WowVersion): string {
+  return `lootmaster-v2-personal-${version}`;
 }
 
 function normalizePriceSource(value: unknown): PriceSource {
@@ -45,6 +57,27 @@ function normalizeSnapshot(raw: unknown, version: WowVersion): ModuleSnapshot {
   };
 }
 
+function normalizePersonalSnapshot(raw: unknown, version: WowVersion): PersonalDashboardSnapshot {
+  if (!raw || typeof raw !== "object") {
+    return DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT(version);
+  }
+
+  const parsed = raw as Partial<PersonalDashboardSnapshot>;
+
+  return {
+    ...DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT(version),
+    ...parsed,
+    importedCrafts: Array.isArray(parsed.importedCrafts) ? parsed.importedCrafts : [],
+    reagents: Array.isArray(parsed.reagents)
+      ? parsed.reagents.map((entry) => normalizeReagent(entry))
+      : [],
+    favoriteGlobalCraftIds: Array.isArray(parsed.favoriteGlobalCraftIds)
+      ? parsed.favoriteGlobalCraftIds.filter((id): id is number => Number.isFinite(id))
+      : [],
+    version,
+  };
+}
+
 export function loadSnapshot(version: WowVersion): ModuleSnapshot {
   if (typeof window === "undefined") {
     return DEFAULT_SNAPSHOT(version);
@@ -68,6 +101,31 @@ export function saveSnapshot(snapshot: ModuleSnapshot): void {
   }
 
   window.localStorage.setItem(storageKey(snapshot.version), JSON.stringify(snapshot));
+}
+
+export function loadPersonalDashboardSnapshot(version: WowVersion): PersonalDashboardSnapshot {
+  if (typeof window === "undefined") {
+    return DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT(version);
+  }
+
+  try {
+    const raw = window.localStorage.getItem(personalStorageKey(version));
+    if (!raw) {
+      return DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT(version);
+    }
+
+    return normalizePersonalSnapshot(JSON.parse(raw), version);
+  } catch {
+    return DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT(version);
+  }
+}
+
+export function savePersonalDashboardSnapshot(snapshot: PersonalDashboardSnapshot): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(personalStorageKey(snapshot.version), JSON.stringify(snapshot));
 }
 
 export async function loadSnapshotFromCloud(version: WowVersion): Promise<ModuleSnapshot | null> {

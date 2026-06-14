@@ -86,9 +86,23 @@ export interface ModuleSnapshot {
   lastTsmSyncAt: string | null;
 }
 
+export interface PersonalDashboardSnapshot {
+  version: WowVersion;
+  importedCrafts: ImportedCraftItem[];
+  reagents: ReagentEntry[];
+  favoriteGlobalCraftIds: number[];
+}
+
 export const DEFAULT_SNAPSHOT = (version: WowVersion): ModuleSnapshot => ({
   version,
   reagents: [],
   crafts: [],
   lastTsmSyncAt: null,
+});
+
+export const DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT = (version: WowVersion): PersonalDashboardSnapshot => ({
+  version,
+  importedCrafts: [],
+  reagents: [],
+  favoriteGlobalCraftIds: [],
 });

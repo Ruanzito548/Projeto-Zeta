@@ -13,14 +13,23 @@ import {
   applyCalculatedReagentPrices,
 } from "@/lib/modules/pricing-engine";
 import {
+  loadPersonalDashboardSnapshot,
   loadSnapshot,
   loadSnapshotFromCloud,
+  savePersonalDashboardSnapshot,
   saveSnapshot,
   saveSnapshotToCloud,
 } from "@/lib/modules/storage";
 import { VERSION_REAGENT_SEEDS } from "@/lib/modules/catalog";
-import type { DashboardRow, ImportedCraftItem, ModuleSnapshot, PriceSource, ReagentEntry } from "@/lib/modules/types";
-import { DEFAULT_SNAPSHOT } from "@/lib/modules/types";
+import type {
+  DashboardRow,
+  ImportedCraftItem,
+  ModuleSnapshot,
+  PersonalDashboardSnapshot,
+  PriceSource,
+  ReagentEntry,
+} from "@/lib/modules/types";
+import { DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT, DEFAULT_SNAPSHOT } from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
 
 const TABS = ["dashboard", "import", "reagents"] as const;
@@ -32,6 +41,19 @@ type TsmResponse = {
   error?: string;
 };
 
+type DashboardScope = "global" | "personal";
+type ImportTarget = "global" | "personal";
+type DashboardSortField =
+  | "name"
+  | "craftCost"
+  | "auctionPrice"
+  | "vendorPrice"
+  | "auctionProfit"
+  | "disenchantProfit"
+  | "npcProfit"
+  | "craftTime";
+type DashboardSortDirection = "asc" | "desc";
+
 const SOURCE_OPTIONS: Array<{ value: PriceSource; label: string }> = [
   { value: "MATERIA_PRIMA", label: "Materia prima" },
   { value: "CRAFTING", label: "Crafting" },
@@ -39,6 +61,20 @@ const SOURCE_OPTIONS: Array<{ value: PriceSource; label: string }> = [
 ];
 
 const AUTO_TSM_REFRESH_MS = 1 * 60 * 1000;
+
+function combineReagents(base: ReagentEntry[], overlay: ReagentEntry[]): ReagentEntry[] {
+  const byId = new Map<number, ReagentEntry>();
+
+  for (const entry of base) {
+    byId.set(entry.itemId, entry);
+  }
+
+  for (const entry of overlay) {
+    byId.set(entry.itemId, entry);
+  }
+
+  return Array.from(byId.values());
+}
 
 function wowheadItemUrl(version: WowVersion, itemId: number): string {
   const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
@@ -391,6 +427,10 @@ function emptySnapshot(version: WowVersion): ModuleSnapshot {
   return DEFAULT_SNAPSHOT(version);
 }
 
+function emptyPersonalSnapshot(version: WowVersion): PersonalDashboardSnapshot {
+  return DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT(version);
+}
+
 function defaultSeedCleanupKey(version: WowVersion): string {
   return `lootmaster-v2-seed-cleaned-${version}`;
 }
@@ -427,7 +467,12 @@ function tabLabel(tab: TabId): string {
 
 export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [activeTab, setActiveTab] = useState<TabId>("reagents");
+  const [dashboardScope, setDashboardScope] = useState<DashboardScope>("global");
+  const [importTarget, setImportTarget] = useState<ImportTarget>("global");
+  const [dashboardSortField, setDashboardSortField] = useState<DashboardSortField>("auctionProfit");
+  const [dashboardSortDirection, setDashboardSortDirection] = useState<DashboardSortDirection>("desc");
   const [snapshot, setSnapshot] = useState<ModuleSnapshot>(() => emptySnapshot(version));
+  const [personalSnapshot, setPersonalSnapshot] = useState<PersonalDashboardSnapshot>(() => emptyPersonalSnapshot(version));
   const [query, setQuery] = useState("");
   const [importInput, setImportInput] = useState("");
   const [importReagentInput, setImportReagentInput] = useState("");
@@ -453,24 +498,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
     setStorageReady(false);
     const local = loadSnapshot(version);
+    const localPersonal = loadPersonalDashboardSnapshot(version);
+    setPersonalSnapshot(localPersonal);
     const cleanupKey = defaultSeedCleanupKey(version);
     const cleanupApplied = window.localStorage.getItem(cleanupKey) === "1";
 
-    // Fast path: if browser cache already has data, hydrate from local only.
-    if (hasSnapshotData(local)) {
-      const hydratedLocal = cleanupApplied ? local : removeDefaultSeedReagents(local);
+    const hydratedLocal = cleanupApplied ? local : removeDefaultSeedReagents(local);
 
-      if (!cleanupApplied) {
-        window.localStorage.setItem(cleanupKey, "1");
-      }
-
-      setSnapshot(hydratedLocal);
-      setStorageReady(true);
-
-      return () => {
-        cancelled = true;
-      };
+    if (!cleanupApplied) {
+      window.localStorage.setItem(cleanupKey, "1");
     }
+
+    setSnapshot(hydratedLocal);
 
     void (async () => {
       const cloud = await loadSnapshotFromCloud(version);
@@ -479,12 +518,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         return;
       }
 
-      let hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0) ? cloud : local;
-
-      if (!cleanupApplied) {
-        hydrated = removeDefaultSeedReagents(hydrated);
-        window.localStorage.setItem(cleanupKey, "1");
-      }
+      const hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0)
+        ? (cleanupApplied ? cloud : removeDefaultSeedReagents(cloud))
+        : hydratedLocal;
 
       setSnapshot(hydrated);
 
@@ -506,7 +542,11 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   }, [snapshot, storageReady]);
 
   useEffect(() => {
-    if (snapshot.reagents.length === 0) {
+    savePersonalDashboardSnapshot(personalSnapshot);
+  }, [personalSnapshot]);
+
+  useEffect(() => {
+    if (snapshot.reagents.length === 0 && personalSnapshot.reagents.length === 0) {
       return;
     }
 
@@ -517,7 +557,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [snapshot.reagents, appDataContent]);
+  }, [snapshot.reagents, personalSnapshot.reagents, appDataContent]);
 
   const filteredReagents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -534,24 +574,84 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     });
   }, [query, snapshot.reagents]);
 
-  const dashboardRows = useMemo(
-    () => buildDashboardRowsWithCraftingScale(snapshot.crafts, snapshot.reagents, dashboardCraftingScaleById),
-    [snapshot.crafts, snapshot.reagents, dashboardCraftingScaleById],
+  const personalFavoriteGlobalCrafts = useMemo(
+    () => snapshot.crafts.filter((craft) => personalSnapshot.favoriteGlobalCraftIds.includes(craft.itemId)),
+    [snapshot.crafts, personalSnapshot.favoriteGlobalCraftIds],
   );
 
+  const visibleCrafts = useMemo(() => {
+    if (dashboardScope === "global") {
+      return snapshot.crafts;
+    }
+
+    const byId = new Map<number, ImportedCraftItem>();
+
+    for (const craft of personalFavoriteGlobalCrafts) {
+      byId.set(craft.itemId, craft);
+    }
+
+    for (const craft of personalSnapshot.importedCrafts) {
+      byId.set(craft.itemId, craft);
+    }
+
+    return Array.from(byId.values());
+  }, [dashboardScope, personalFavoriteGlobalCrafts, personalSnapshot.importedCrafts, snapshot.crafts]);
+
+  const visibleReagents = useMemo(
+    () => (dashboardScope === "global"
+      ? snapshot.reagents
+      : combineReagents(snapshot.reagents, personalSnapshot.reagents)),
+    [dashboardScope, snapshot.reagents, personalSnapshot.reagents],
+  );
+
+  const dashboardRows = useMemo(
+    () => buildDashboardRowsWithCraftingScale(visibleCrafts, visibleReagents, dashboardCraftingScaleById),
+    [visibleCrafts, visibleReagents, dashboardCraftingScaleById],
+  );
+
+  const sortedDashboardRows = useMemo(() => {
+    const list = [...dashboardRows];
+    const direction = dashboardSortDirection === "asc" ? 1 : -1;
+    const craftById = new Map(visibleCrafts.map((craft) => [craft.itemId, craft]));
+
+    list.sort((left, right) => {
+      let leftValue: number | string = 0;
+      let rightValue: number | string = 0;
+
+      if (dashboardSortField === "name") {
+        leftValue = left.name.toLowerCase();
+        rightValue = right.name.toLowerCase();
+      } else if (dashboardSortField === "craftTime") {
+        leftValue = craftById.get(left.itemId)?.craftTimeSeconds ?? 0;
+        rightValue = craftById.get(right.itemId)?.craftTimeSeconds ?? 0;
+      } else {
+        leftValue = left[dashboardSortField];
+        rightValue = right[dashboardSortField];
+      }
+
+      if (typeof leftValue === "string" && typeof rightValue === "string") {
+        return leftValue.localeCompare(rightValue) * direction;
+      }
+
+      return ((Number(leftValue) || 0) - (Number(rightValue) || 0)) * direction;
+    });
+
+    return list;
+  }, [dashboardRows, dashboardSortDirection, dashboardSortField, visibleCrafts]);
+
   const adjustedPriceById = useMemo(
-    () => buildAdjustedPriceById(snapshot.reagents, dashboardCraftingScaleById),
-    [snapshot.reagents, dashboardCraftingScaleById],
+    () => buildAdjustedPriceById(visibleReagents, dashboardCraftingScaleById),
+    [visibleReagents, dashboardCraftingScaleById],
   );
 
   const effectiveCraftById = useMemo(
-    () => new Map(snapshot.crafts.map((craft) => [craft.itemId, craft])),
-    [snapshot.crafts],
+    () => new Map(visibleCrafts.map((craft) => [craft.itemId, craft])),
+    [visibleCrafts],
   );
 
   const reagentById = useMemo(
-    () => new Map(snapshot.reagents.map((entry) => [entry.itemId, entry])),
-    [snapshot.reagents],
+    () => new Map(visibleReagents.map((entry) => [entry.itemId, entry])),
+    [visibleReagents],
   );
 
   function renderRecipeChain(
@@ -684,9 +784,11 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       const base = data.item;
-      const missing = base.recipe.filter(
-        (row) => !snapshot.reagents.some((reagent) => reagent.itemId === row.itemId),
-      );
+      const knownReagents = new Set<number>([
+        ...snapshot.reagents.map((entry) => entry.itemId),
+        ...personalSnapshot.reagents.map((entry) => entry.itemId),
+      ]);
+      const missing = base.recipe.filter((row) => !knownReagents.has(row.itemId));
 
       let importedReagents: ReagentEntry[] = [];
 
@@ -713,30 +815,55 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         importedReagents = imported.filter((entry): entry is ReagentEntry => Boolean(entry));
       }
 
-      setSnapshot((prev) => {
-        const uniqueReagents = mergePriceEntries(prev.reagents, [
-          ...importedReagents,
-          ...toTrackedPriceEntries(base, version),
-        ]);
+      if (importTarget === "global") {
+        setSnapshot((prev) => {
+          const uniqueReagents = mergePriceEntries(prev.reagents, [
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
+          ]);
 
-        const nextCrafts = [
-          ...prev.crafts.filter((item) => item.itemId !== base.itemId),
-          {
-            ...base,
-            updatedAt: new Date().toISOString(),
-          },
-        ];
+          const nextCrafts = [
+            ...prev.crafts.filter((item) => item.itemId !== base.itemId),
+            {
+              ...base,
+              updatedAt: new Date().toISOString(),
+            },
+          ];
 
-        return {
-          ...prev,
-          crafts: nextCrafts,
-          reagents: applyCalculatedReagentPrices([...uniqueReagents]),
-        };
-      });
+          return {
+            ...prev,
+            crafts: nextCrafts,
+            reagents: applyCalculatedReagentPrices([...uniqueReagents]),
+          };
+        });
+      } else {
+        setPersonalSnapshot((prev) => {
+          const uniqueReagents = mergePriceEntries(prev.reagents, [
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
+          ]);
+
+          const nextCrafts = [
+            ...prev.importedCrafts.filter((item) => item.itemId !== base.itemId),
+            {
+              ...base,
+              updatedAt: new Date().toISOString(),
+            },
+          ];
+
+          return {
+            ...prev,
+            importedCrafts: nextCrafts,
+            reagents: applyCalculatedReagentPrices([...uniqueReagents]),
+          };
+        });
+      }
 
       setImportInput("");
       setActiveTab("dashboard");
-      toast.success("Item importado e salvo com sucesso.");
+      toast.success(importTarget === "global"
+        ? "Item importado e salvo para todos com sucesso."
+        : "Item importado no Meu Dashboard com sucesso.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro inesperado ao importar item.");
     } finally {
@@ -819,7 +946,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     setSyncingPrices(true);
 
     try {
-      const names = snapshot.reagents.map((entry) => entry.name);
+      const names = Array.from(new Set([
+        ...snapshot.reagents.map((entry) => entry.name),
+        ...personalSnapshot.reagents.map((entry) => entry.name),
+      ]));
       const response = await fetch("/tsm-local", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -877,6 +1007,35 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
           reagents: applyCalculatedReagentPrices(updatedReagents),
           crafts: updatedCrafts,
           lastTsmSyncAt: new Date().toISOString(),
+        };
+      });
+
+      setPersonalSnapshot((prev) => {
+        const updatedReagents = prev.reagents.map((entry) => {
+          const byItemId = byId.get(entry.itemId);
+          const byLowerName = byName.get(entry.name.trim().toLowerCase());
+          const tsmPrice = byItemId ?? byLowerName ?? entry.tsmPrice;
+
+          return {
+            ...entry,
+            tsmPrice,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        const updatedCrafts = prev.importedCrafts.map((craft) => {
+          const price = byId.get(craft.itemId) ?? byName.get(craft.name.trim().toLowerCase()) ?? craft.auctionPrice;
+          return {
+            ...craft,
+            auctionPrice: price,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        return {
+          ...prev,
+          importedCrafts: updatedCrafts,
+          reagents: applyCalculatedReagentPrices(updatedReagents),
         };
       });
 
@@ -999,6 +1158,16 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   function updateCraftItemTime(itemId: number, rawValue: string) {
     const parsed = Number(rawValue.trim().replace(",", "."));
     const seconds = Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 10) / 10 : undefined;
+    if (dashboardScope === "personal") {
+      setPersonalSnapshot((prev) => ({
+        ...prev,
+        importedCrafts: prev.importedCrafts.map((craft) =>
+          craft.itemId === itemId ? { ...craft, craftTimeSeconds: seconds } : craft,
+        ),
+      }));
+      return;
+    }
+
     setSnapshot((prev) => ({
       ...prev,
       crafts: prev.crafts.map((craft) =>
@@ -1010,6 +1179,34 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   function updateReagentCraftTime(itemId: number, rawValue: string) {
     const parsed = Number(rawValue.trim().replace(",", "."));
     const seconds = Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 10) / 10 : undefined;
+
+    if (dashboardScope === "personal") {
+      setPersonalSnapshot((prev) => {
+        const exists = prev.reagents.some((entry) => entry.itemId === itemId);
+
+        if (exists) {
+          return {
+            ...prev,
+            reagents: prev.reagents.map((entry) =>
+              entry.itemId === itemId ? { ...entry, craftTimeSeconds: seconds } : entry,
+            ),
+          };
+        }
+
+        const globalEntry = snapshot.reagents.find((entry) => entry.itemId === itemId);
+
+        if (!globalEntry) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          reagents: [...prev.reagents, { ...globalEntry, craftTimeSeconds: seconds }],
+        };
+      });
+      return;
+    }
+
     setSnapshot((prev) => ({
       ...prev,
       reagents: prev.reagents.map((entry) =>
@@ -1025,10 +1222,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       return;
     }
 
-    setSnapshot((prev) => ({
-      ...prev,
-      crafts: prev.crafts.filter((craft) => craft.itemId !== itemId),
-    }));
+    if (dashboardScope === "personal") {
+      setPersonalSnapshot((prev) => ({
+        ...prev,
+        importedCrafts: prev.importedCrafts.filter((craft) => craft.itemId !== itemId),
+        favoriteGlobalCraftIds: prev.favoriteGlobalCraftIds.filter((id) => id !== itemId),
+      }));
+    } else {
+      setSnapshot((prev) => ({
+        ...prev,
+        crafts: prev.crafts.filter((craft) => craft.itemId !== itemId),
+      }));
+    }
 
     setExpandedCraftIds((prev) => {
       const next = { ...prev };
@@ -1043,6 +1248,21 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     });
 
     toast.success("Item removido do Dashboard.");
+  }
+
+  function toggleFavoriteGlobalCraft(item: ImportedCraftItem) {
+    setPersonalSnapshot((prev) => {
+      const isFavorite = prev.favoriteGlobalCraftIds.includes(item.itemId);
+
+      return {
+        ...prev,
+        favoriteGlobalCraftIds: isFavorite
+          ? prev.favoriteGlobalCraftIds.filter((id) => id !== item.itemId)
+          : [...prev.favoriteGlobalCraftIds, item.itemId],
+      };
+    });
+
+    toast.success("Meu Dashboard atualizado.");
   }
 
   function removeReagent(itemId: number, itemName: string) {
@@ -1276,6 +1496,27 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             <p className="text-sm text-[#b8e6b8]">Entrada manual por URL ou Item ID com captura automatica de dados economicos.</p>
           </CardHeader>
           <CardContent className="space-y-5 pt-6">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Destino da importacao</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={importTarget === "global" ? "default" : "secondary"}
+                  onClick={() => setImportTarget("global")}
+                  className="h-10"
+                >
+                  Dashboard Global
+                </Button>
+                <Button
+                  type="button"
+                  variant={importTarget === "personal" ? "default" : "secondary"}
+                  onClick={() => setImportTarget("personal")}
+                  className="h-10"
+                >
+                  Meu Dashboard
+                </Button>
+              </div>
+            </div>
             <Input
               value={importInput}
               onChange={(event) => setImportInput(event.target.value)}
@@ -1283,7 +1524,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
               className="h-12"
             />
             <Button onClick={importItem} disabled={importingItem} className="h-12 w-full sm:w-auto">
-              {importingItem ? "Importando..." : "Importar e Salvar"}
+              {importingItem ? "Importando..." : `Importar para ${importTarget === "global" ? "Dashboard Global" : "Meu Dashboard"}`}
             </Button>
             <p className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] px-4 py-3 text-sm text-[#b8e6b8]">
               A importacao busca automaticamente nome, icone, qualidade, receita, quantidade produzida,
@@ -1298,8 +1539,51 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
           <CardHeader className="border-b border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(42,112,58,0.22),rgba(3,8,4,0.97))]">
             <CardTitle className="text-2xl">Dashboard Financeiro</CardTitle>
             <p className="text-sm text-[#b8e6b8]">Painel premium de margem por craft, venda e disenchant com comparativo de melhor opcao.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={dashboardScope === "global" ? "default" : "secondary"}
+                onClick={() => setDashboardScope("global")}
+                className="h-10"
+              >
+                Dashboard Global
+              </Button>
+              <Button
+                type="button"
+                variant={dashboardScope === "personal" ? "default" : "secondary"}
+                onClick={() => setDashboardScope("personal")}
+                className="h-10"
+              >
+                Meu Dashboard
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Ordenar por</span>
+              <Select
+                value={dashboardSortField}
+                onChange={(event) => setDashboardSortField(event.target.value as DashboardSortField)}
+                className="h-10 min-w-[220px]"
+              >
+                <option value="auctionProfit">Lucro Leilao</option>
+                <option value="disenchantProfit">Lucro Disenchant</option>
+                <option value="npcProfit">Lucro NPC</option>
+                <option value="craftCost">Custo Craft</option>
+                <option value="auctionPrice">Venda Leilao</option>
+                <option value="vendorPrice">Venda NPC</option>
+                <option value="craftTime">Tempo Craft</option>
+                <option value="name">Nome</option>
+              </Select>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-10"
+                onClick={() => setDashboardSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}
+              >
+                {dashboardSortDirection === "asc" ? "Crescente" : "Decrescente"}
+              </Button>
+            </div>
             <div className="overflow-x-auto rounded-2xl border border-[rgba(69,190,95,0.22)] bg-[rgba(3,8,4,0.55)]">
               <table className="w-full min-w-[1180px] text-sm">
                 <thead className="bg-[linear-gradient(180deg,rgba(20,60,25,0.98),rgba(3,8,4,0.99))] text-xs uppercase tracking-[0.11em] text-[#a8ff9f]/90">
@@ -1319,7 +1603,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {dashboardRows.map((row) => {
+                  {sortedDashboardRows.map((row) => {
                     const expanded = Boolean(expandedCraftIds[row.itemId]);
                     const craft = effectiveCraftById.get(row.itemId);
                     const scenarioTotals = craft
@@ -1390,16 +1674,33 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                             </Badge>
                           </td>
                           <td className="px-4 py-4">
-                            <Button
-                              type="button"
-                              variant="danger"
-                              size="sm"
-                              onClick={() => removeCraftItem(row.itemId, row.name)}
-                              className="inline-flex items-center gap-1.5"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Excluir
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {dashboardScope === "global" ? (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => {
+                                    const craftItem = effectiveCraftById.get(row.itemId);
+                                    if (craftItem) {
+                                      toggleFavoriteGlobalCraft(craftItem);
+                                    }
+                                  }}
+                                >
+                                  {personalSnapshot.favoriteGlobalCraftIds.includes(row.itemId) ? "Favorito" : "Favoritar"}
+                                </Button>
+                              ) : null}
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                onClick={() => removeCraftItem(row.itemId, row.name)}
+                                className="inline-flex items-center gap-1.5"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {dashboardScope === "global" ? "Excluir" : "Remover"}
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                         {expanded && craft ? (
@@ -1564,7 +1865,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                       </>
                     );
                   })}
-                  {dashboardRows.length === 0 ? (
+                  {sortedDashboardRows.length === 0 ? (
                     <tr>
                       <td colSpan={12} className="px-4 py-12 text-center text-base text-[#4a8a4a]">
                         Nenhum item importado ainda. Use a aba Importar Item.
