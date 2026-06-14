@@ -255,33 +255,16 @@ function formatDateTime(timestamp: string | null): string {
   return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
 }
 
-function getScenarioUnitPrice(
-  reagent: ReagentEntry | undefined,
-  multiplier: number,
-  craftingScaleById: Record<number, number>,
-): number {
-  if (!reagent) {
-    return 0;
-  }
-
-  const basePrice = getAdjustedBasePrice(reagent, craftingScaleById);
-
-  if (reagent.fixedPrice && reagent.fixedPrice > 0) {
-    return basePrice;
-  }
-
-  return basePrice * multiplier;
-}
-
 function buildCraftScenarioTotals(
   craft: ImportedCraftItem,
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
 ) {
+  const adjustedPriceById = buildAdjustedPriceById(reagents, craftingScaleById);
+
   return craft.recipe.reduce(
     (accumulator, component) => {
-      const reagent = reagents.find((entry) => entry.itemId === component.itemId);
-      const baseUnit = getScenarioUnitPrice(reagent, 1, craftingScaleById);
+      const baseUnit = adjustedPriceById.get(component.itemId) ?? 0;
 
       return {
         base: accumulator.base + baseUnit * component.quantity,
@@ -1759,7 +1742,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     const expanded = Boolean(expandedCraftIds[row.itemId]);
                     const craft = effectiveCraftById.get(row.itemId);
                     const scenarioTotals = craft
-                      ? buildCraftScenarioTotals(craft, snapshot.reagents, dashboardCraftingScaleById)
+                      ? buildCraftScenarioTotals(craft, visibleReagents, dashboardCraftingScaleById)
                       : { base: 0 };
                     const disenchantValue = craft ? buildExpectedDisenchantValue(craft, adjustedPriceById) : 0;
                     const craftQty = Math.max(1, dashboardCraftQtyById[row.itemId] ?? 1);
