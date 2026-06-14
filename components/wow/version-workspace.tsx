@@ -478,6 +478,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [importTarget, setImportTarget] = useState<ImportTarget>("global");
   const [dashboardSortField, setDashboardSortField] = useState<DashboardSortField>("auctionProfit");
   const [dashboardSortDirection, setDashboardSortDirection] = useState<DashboardSortDirection>("desc");
+  const [dashboardSortFrozenOrder, setDashboardSortFrozenOrder] = useState<number[] | null>(null);
   const [snapshot, setSnapshot] = useState<ModuleSnapshot>(() => emptySnapshot(version));
   const [personalSnapshot, setPersonalSnapshot] = useState<PersonalDashboardSnapshot>(() => emptyPersonalSnapshot(version));
   const [query, setQuery] = useState("");
@@ -597,6 +598,26 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     };
   }, [snapshot.reagents, personalSnapshot.reagents, appDataContent]);
 
+  useEffect(() => {
+    if (!dashboardSortFrozenOrder) {
+      return;
+    }
+
+    const release = () => {
+      setDashboardSortFrozenOrder(null);
+    };
+
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, [dashboardSortFrozenOrder]);
+
   const filteredReagents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
@@ -649,6 +670,19 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
   const sortedDashboardRows = useMemo(() => {
     const list = [...dashboardRows];
+
+    if (dashboardSortFrozenOrder) {
+      const orderIndex = new Map(dashboardSortFrozenOrder.map((id, index) => [id, index]));
+
+      list.sort((left, right) => {
+        const leftIndex = orderIndex.get(left.itemId) ?? Number.MAX_SAFE_INTEGER;
+        const rightIndex = orderIndex.get(right.itemId) ?? Number.MAX_SAFE_INTEGER;
+        return leftIndex - rightIndex;
+      });
+
+      return list;
+    }
+
     const direction = dashboardSortDirection === "asc" ? 1 : -1;
     const craftById = new Map(visibleCrafts.map((craft) => [craft.itemId, craft]));
 
@@ -675,7 +709,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     });
 
     return list;
-  }, [dashboardRows, dashboardSortDirection, dashboardSortField, visibleCrafts]);
+  }, [dashboardRows, dashboardSortDirection, dashboardSortField, dashboardSortFrozenOrder, visibleCrafts]);
 
   const adjustedPriceById = useMemo(
     () => buildAdjustedPriceById(visibleReagents, dashboardCraftingScaleById),
@@ -702,7 +736,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     const hasCraftChain = reagent?.priceSource === "CRAFTING" && reagent.recipe.length > 0;
     const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
     const currentScale = dashboardCraftingScaleById[component.itemId] ?? 1;
-    const baseUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
+    const baseUnit = adjustedPriceById.get(component.itemId) ?? getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
     const expanded = Boolean(expandedRecipeIds[path]);
 
     return (
@@ -757,6 +791,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     max={150}
                     step={1}
                     value={Math.round(currentScale * 100)}
+                    onPointerDown={freezeDashboardSortOrder}
+                    onPointerUp={unfreezeDashboardSortOrder}
+                    onPointerCancel={unfreezeDashboardSortOrder}
+                    onBlur={unfreezeDashboardSortOrder}
                     onChange={(event) => updateDashboardReagentScale(component.itemId, Number(event.target.value) / 100)}
                     className="w-36 accent-[#9eff8a]"
                   />
@@ -1211,6 +1249,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       ...prev,
       [itemId]: scale,
     }));
+  }
+
+  function freezeDashboardSortOrder() {
+    if (dashboardSortFrozenOrder) {
+      return;
+    }
+
+    setDashboardSortFrozenOrder(sortedDashboardRows.map((row) => row.itemId));
+  }
+
+  function unfreezeDashboardSortOrder() {
+    setDashboardSortFrozenOrder(null);
   }
 
   function updateCraftItemTime(itemId: number, rawValue: string) {
@@ -1908,6 +1958,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                                       max={150}
                                                       step={1}
                                                       value={Math.round(currentScale * 100)}
+                                                      onPointerDown={freezeDashboardSortOrder}
+                                                      onPointerUp={unfreezeDashboardSortOrder}
+                                                      onPointerCancel={unfreezeDashboardSortOrder}
+                                                      onBlur={unfreezeDashboardSortOrder}
                                                       onChange={(event) => updateDashboardReagentScale(entry.itemId, Number(event.target.value) / 100)}
                                                       className="w-36 accent-[#9eff8a]"
                                                     />
