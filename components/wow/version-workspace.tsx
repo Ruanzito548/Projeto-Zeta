@@ -287,11 +287,14 @@ function buildCraftScenarioTotals(
   );
 }
 
+const AUCTION_FEE = 0.05;
+
 function buildExpectedDisenchantValue(craft: ImportedCraftItem, priceById: Map<number, number>): number {
   return craft.disenchant.reduce((total, row) => {
     const price = priceById.get(row.itemId) ?? 0;
     const averageQty = (row.min + row.max) / 2;
-    return total + price * averageQty * row.chance;
+    // Disenchant materials are sold on the auction — apply 5% fee
+    return total + price * (1 - AUCTION_FEE) * averageQty * row.chance;
   }, 0);
 }
 
@@ -391,7 +394,7 @@ function buildDashboardRowsWithCraftingScale(
       return total + unit * component.quantity;
     }, 0);
 
-    const auctionProfit = craft.auctionPrice - craftCost;
+    const auctionProfit = craft.auctionPrice * (1 - AUCTION_FEE) - craftCost;
     const npcProfit = craft.vendorPrice - craftCost;
     const disenchantProfit = buildExpectedDisenchantValue(craft, priceById) - craftCost;
 
