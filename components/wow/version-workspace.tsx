@@ -800,6 +800,21 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     onChange={(event) => updateDashboardReagentScale(component.itemId, Number(event.target.value) / 100)}
                     className="w-36 accent-[#9eff8a]"
                   />
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={Math.round(baseUnit)}
+                    key={`scale-price-${path}-${Math.round(baseUnit)}`}
+                    onBlur={(event) => updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.currentTarget.value);
+                      }
+                    }}
+                    className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
+                    aria-label={`Preco ajustado de ${component.name}`}
+                  />
                   <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                 </div>
               ) : null}
@@ -1989,21 +2004,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                                       onBlur={unfreezeDashboardSortOrder}
                                                       onChange={(event) => updateDashboardReagentScale(entry.itemId, Number(event.target.value) / 100)}
                                                       className="w-36 accent-[#9eff8a]"
-                                                    />
-                                                    <input
-                                                      type="number"
-                                                      min={0}
-                                                      step={1}
-                                                      defaultValue={Math.round(baseUnit)}
-                                                      key={`scale-price-${path}-${Math.round(baseUnit)}`}
-                                                      onBlur={(event) => updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.target.value)}
-                                                      onKeyDown={(event) => {
-                                                        if (event.key === "Enter") {
-                                                          updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.currentTarget.value);
-                                                        }
-                                                      }}
-                                                      className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
-                                                      aria-label={`Preco ajustado de ${component.name}`}
                                                     />
                                                     <input
                                                       type="number"
