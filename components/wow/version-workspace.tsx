@@ -506,13 +506,40 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     const cleanupKey = defaultSeedCleanupKey(version);
     const cleanupApplied = window.localStorage.getItem(cleanupKey) === "1";
 
+    // Apply seed cleanup only to LOCAL data (never to cloud data to avoid corrupting global)
     const hydratedLocal = cleanupApplied ? local : removeDefaultSeedReagents(local);
 
     if (!cleanupApplied) {
       window.localStorage.setItem(cleanupKey, "1");
     }
 
-    setSnapshot(hydratedLocal);
+    // Fast path: if local already has data, hydrate immediately and then sync from cloud in background
+    if (hasSnapshotData(hydratedLocal)) {
+      setSnapshot(hydratedLocal);
+      setStorageReady(true);
+
+      // Still load cloud in background to pick up changes from other sessions
+      void (async () => {
+        const cloud = await loadSnapshotFromCloud(version);
+
+        if (cancelled) {
+          return;
+        }
+
+        // Only adopt cloud data if it is newer than local
+        if (
+          cloud &&
+          (cloud.crafts.length > 0 || cloud.reagents.length > 0) &&
+          new Date(cloud.lastTsmSyncAt ?? 0) > new Date(hydratedLocal.lastTsmSyncAt ?? 0)
+        ) {
+          setSnapshot(cloud);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
 
     void (async () => {
       const cloud = await loadSnapshotFromCloud(version);
@@ -521,8 +548,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         return;
       }
 
+      // Use cloud data as-is — never apply seed cleanup to cloud to avoid corrupting global data
       const hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0)
-        ? (cleanupApplied ? cloud : removeDefaultSeedReagents(cloud))
+        ? cloud
         : hydratedLocal;
 
       setSnapshot(hydrated);
