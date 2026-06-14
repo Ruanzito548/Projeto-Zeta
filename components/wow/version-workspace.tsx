@@ -1252,6 +1252,27 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       [itemId]: scale,
     }));
   }
+  function updateDashboardReagentScaleFromUnitPrice(itemId: number, currentUnitPrice: number, rawValue: string) {
+    const normalizedRaw = rawValue.trim().replace(",", ".");
+
+    if (!normalizedRaw) {
+      return;
+    }
+
+    const parsed = Number(normalizedRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+
+    const currentScale = dashboardCraftingScaleById[itemId] ?? 1;
+    const baseWithoutScale = currentScale > 0 ? currentUnitPrice / currentScale : currentUnitPrice;
+
+    if (!Number.isFinite(baseWithoutScale) || baseWithoutScale <= 0) {
+      return;
+    }
+
+    updateDashboardReagentScale(itemId, parsed / baseWithoutScale);
+  }
 
   function freezeDashboardSortOrder() {
     if (dashboardSortFrozenOrder) {
@@ -1968,6 +1989,36 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                                       onBlur={unfreezeDashboardSortOrder}
                                                       onChange={(event) => updateDashboardReagentScale(entry.itemId, Number(event.target.value) / 100)}
                                                       className="w-36 accent-[#9eff8a]"
+                                                    />
+                                                    <input
+                                                      type="number"
+                                                      min={0}
+                                                      step={1}
+                                                      defaultValue={Math.round(baseUnit)}
+                                                      key={`scale-price-${path}-${Math.round(baseUnit)}`}
+                                                      onBlur={(event) => updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.target.value)}
+                                                      onKeyDown={(event) => {
+                                                        if (event.key === "Enter") {
+                                                          updateDashboardReagentScaleFromUnitPrice(component.itemId, baseUnit, event.currentTarget.value);
+                                                        }
+                                                      }}
+                                                      className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
+                                                      aria-label={`Preco ajustado de ${component.name}`}
+                                                    />
+                                                    <input
+                                                      type="number"
+                                                      min={0}
+                                                      step={1}
+                                                      defaultValue={Math.round(adjustedUnit)}
+                                                      key={`scale-price-disenchant-${craft.itemId}-${entry.itemId}-${Math.round(adjustedUnit)}`}
+                                                      onBlur={(event) => updateDashboardReagentScaleFromUnitPrice(entry.itemId, adjustedUnit, event.target.value)}
+                                                      onKeyDown={(event) => {
+                                                        if (event.key === "Enter") {
+                                                          updateDashboardReagentScaleFromUnitPrice(entry.itemId, adjustedUnit, event.currentTarget.value);
+                                                        }
+                                                      }}
+                                                      className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
+                                                      aria-label={`Preco ajustado de ${entry.name}`}
                                                     />
                                                     <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                                                   </div>
