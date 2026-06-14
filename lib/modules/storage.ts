@@ -1,4 +1,5 @@
 import type {
+  ImportedCraftItem,
   ModuleSnapshot,
   PersonalDashboardSnapshot,
   PriceSource,
@@ -10,7 +11,7 @@ import {
 } from "@/lib/modules/types";
 import type { WowVersion } from "@/lib/wow/versions";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { deleteField, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 function storageKey(version: WowVersion): string {
   return `lootmaster-v2-${version}`;
@@ -141,12 +142,40 @@ export async function loadSnapshotFromCloud(version: WowVersion): Promise<Module
       return null;
     }
 
-    return normalizeSnapshot(snap.data().snapshot, version);
+    const data = snap.data();
+
+    // New format: crafts and reagents stored as maps keyed by itemId
+    if (data.craftsById && typeof data.craftsById === "object") {
+      const crafts = Object.values(data.craftsById) as ImportedCraftItem[];
+      const reagents = Object.values(
+        (data.reagentsById ?? {}) as Record<string, ReagentEntry>,
+      );
+
+      return normalizeSnapshot(
+        {
+          version,
+          lastTsmSyncAt: data.lastTsmSyncAt ?? null,
+          crafts,
+          reagents,
+        },
+        version,
+      );
+    }
+
+    // Legacy format: snapshot stored as nested object
+    if (data.snapshot) {
+      return normalizeSnapshot(data.snapshot, version);
+    }
+
+    return null;
   } catch {
     return null;
   }
 }
 
+// Saves crafts and reagents as Firestore maps keyed by itemId.
+// Using merge:true means parallel writes from different users never
+// overwrite each other's items — only the changed keys are touched.
 export async function saveSnapshotToCloud(snapshot: ModuleSnapshot): Promise<void> {
   if (!isFirebaseConfigured || !db) {
     return;
@@ -154,16 +183,142 @@ export async function saveSnapshotToCloud(snapshot: ModuleSnapshot): Promise<voi
 
   try {
     const ref = doc(db, "wowSnapshots", snapshot.version);
+
+    const craftsById: Record<string, ImportedCraftItem> = {};
+    for (const craft of snapshot.crafts) {
+      craftsById[String(craft.itemId)] = craft;
+    }
+
+    const reagentsById: Record<string, ReagentEntry> = {};
+    for (const reagent of snapshot.reagents) {
+      reagentsById[String(reagent.itemId)] = reagent;
+    }
+
     await setDoc(
       ref,
       {
         version: snapshot.version,
-        snapshot,
+        lastTsmSyncAt: snapshot.lastTsmSyncAt,
+        craftsById,
+        reagentsById,
         syncedAt: new Date().toISOString(),
       },
       { merge: true },
     );
   } catch {
     // Ignore cloud sync failures to keep local storage flow responsive.
+  }
+}
+
+// Atomically saves a single craft item to the global Firestore document.
+export async function saveGlobalCraftToCloud(
+  craft: ImportedCraftItem,
+  reagents: ReagentEntry[],
+  version: WowVersion,
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    return;
+  }
+
+  try {
+    const ref = doc(db, "wowSnapshots", version);
+
+    const reagentsById: Record<string, ReagentEntry> = {};
+    for (const reagent of reagents) {
+      reagentsById[String(reagent.itemId)] = reagent;
+    }
+
+    await setDoc(
+      ref,
+      {
+        version,
+        [`craftsById.${craft.itemId}`]: craft,
+        ...Object.fromEntries(
+          Object.entries(reagentsById).map(([k, v]) => [`reagentsById.${k}`, v]),
+        ),
+        syncedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  } catch {
+    // Ignore cloud sync failures.
+  }
+}
+
+// Atomically removes a craft item from the global Firestore document.
+export async function deleteGlobalCraftFromCloud(
+  itemId: number,
+  version: WowVersion,
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    return;
+  }
+
+  try {
+    const ref = doc(db, "wowSnapshots", version);
+    await updateDoc(ref, {
+      [`craftsById.${itemId}`]: deleteField(),
+    });
+  } catch {
+    // Ignore cloud sync failures.
+  }
+}
+
+// Atomically removes a reagent from the global Firestore document.
+export async function deleteGlobalReagentFromCloud(
+  itemId: number,
+  version: WowVersion,
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    return;
+  }
+
+  try {
+    const ref = doc(db, "wowSnapshots", version);
+    await updateDoc(ref, {
+      [`reagentsById.${itemId}`]: deleteField(),
+    });
+  } catch {
+    // Ignore cloud sync failures.
+  }
+}
+
+// Saves reagent prices update (TSM sync) globally.
+export async function saveGlobalReagentPricesToCloud(
+  reagents: ReagentEntry[],
+  crafts: ImportedCraftItem[],
+  lastTsmSyncAt: string,
+  version: WowVersion,
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    return;
+  }
+
+  try {
+    const ref = doc(db, "wowSnapshots", version);
+
+    const reagentsById: Record<string, ReagentEntry> = {};
+    for (const reagent of reagents) {
+      reagentsById[String(reagent.itemId)] = reagent;
+    }
+
+    const craftsById: Record<string, ImportedCraftItem> = {};
+    for (const craft of crafts) {
+      craftsById[String(craft.itemId)] = craft;
+    }
+
+    await setDoc(
+      ref,
+      {
+        version,
+        lastTsmSyncAt,
+        reagentsById,
+        craftsById,
+        syncedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+  } catch {
+    // Ignore cloud sync failures.
   }
 }

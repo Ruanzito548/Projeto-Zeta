@@ -13,9 +13,13 @@ import {
   applyCalculatedReagentPrices,
 } from "@/lib/modules/pricing-engine";
 import {
+  deleteGlobalCraftFromCloud,
+  deleteGlobalReagentFromCloud,
   loadPersonalDashboardSnapshot,
   loadSnapshot,
   loadSnapshotFromCloud,
+  saveGlobalCraftToCloud,
+  saveGlobalReagentPricesToCloud,
   savePersonalDashboardSnapshot,
   saveSnapshot,
   saveSnapshotToCloud,
@@ -568,8 +572,11 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       return;
     }
 
+    // Always persist locally
     saveSnapshot(snapshot);
-    void saveSnapshotToCloud(snapshot);
+    // saveSnapshotToCloud is intentionally NOT called here to avoid
+    // users overwriting each other's global data on every state change.
+    // Global cloud writes happen only through the atomic helpers below.
   }, [snapshot, storageReady]);
 
   useEffect(() => {
@@ -847,6 +854,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       if (importTarget === "global") {
+        const newCraft = { ...base, updatedAt: new Date().toISOString() };
+        let finalReagents: ReagentEntry[] = [];
+
         setSnapshot((prev) => {
           const uniqueReagents = mergePriceEntries(prev.reagents, [
             ...importedReagents,
@@ -855,18 +865,27 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
           const nextCrafts = [
             ...prev.crafts.filter((item) => item.itemId !== base.itemId),
-            {
-              ...base,
-              updatedAt: new Date().toISOString(),
-            },
+            newCraft,
           ];
+
+          finalReagents = applyCalculatedReagentPrices([...uniqueReagents]);
 
           return {
             ...prev,
             crafts: nextCrafts,
-            reagents: applyCalculatedReagentPrices([...uniqueReagents]),
+            reagents: finalReagents,
           };
         });
+
+        // Save atomically to Firebase so all users see the new item
+        void saveGlobalCraftToCloud(
+          newCraft,
+          [
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
+          ],
+          version,
+        );
       } else {
         setPersonalSnapshot((prev) => {
           const uniqueReagents = mergePriceEntries(prev.reagents, [
@@ -1073,6 +1092,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       if (!silent) {
         toast.success("Precos atualizados via TSM.");
       }
+
+      // Persist prices globally so all users see updated values
+      void saveGlobalReagentPricesToCloud(
+        snapshot.reagents,
+        snapshot.crafts,
+        new Date().toISOString(),
+        version,
+      );
     } catch (error) {
       if (!silent) {
         toast.error(error instanceof Error ? error.message : "Erro ao atualizar precos.");
@@ -1264,6 +1291,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         ...prev,
         crafts: prev.crafts.filter((craft) => craft.itemId !== itemId),
       }));
+
+      // Remove from Firebase so it disappears for all users
+      void deleteGlobalCraftFromCloud(itemId, version);
     }
 
     setExpandedCraftIds((prev) => {
@@ -1309,6 +1339,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         prev.reagents.filter((entry) => entry.itemId !== itemId),
       ),
     }));
+
+    // Remove from Firebase so the price disappears for all users
+    void deleteGlobalReagentFromCloud(itemId, version);
 
     toast.success(`${itemName} removido de Precos.`);
   }
