@@ -791,6 +791,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     max={150}
                     step={1}
                     value={Math.round(currentScale * 100)}
+                    onMouseDown={freezeDashboardSortOrder}
+                    onTouchStart={freezeDashboardSortOrder}
                     onPointerDown={freezeDashboardSortOrder}
                     onPointerUp={unfreezeDashboardSortOrder}
                     onPointerCancel={unfreezeDashboardSortOrder}
@@ -1958,6 +1960,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                                       max={150}
                                                       step={1}
                                                       value={Math.round(currentScale * 100)}
+                                                      onMouseDown={freezeDashboardSortOrder}
+                                                      onTouchStart={freezeDashboardSortOrder}
                                                       onPointerDown={freezeDashboardSortOrder}
                                                       onPointerUp={unfreezeDashboardSortOrder}
                                                       onPointerCancel={unfreezeDashboardSortOrder}
