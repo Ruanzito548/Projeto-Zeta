@@ -1056,19 +1056,24 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         ...snapshot.reagents.map((entry) => entry.name),
         ...personalSnapshot.reagents.map((entry) => entry.name),
       ]));
-      const response = await fetch("/tsm-local", {
+
+      const response = await fetch(version === "retail" ? "/tsm-bulk" : "/tsm-local", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          names,
-          appDataContent: appDataContent.trim() ? appDataContent : undefined,
-        }),
+        body: JSON.stringify(
+          version === "retail"
+            ? { names }
+            : {
+                names,
+                appDataContent: appDataContent.trim() ? appDataContent : undefined,
+              },
+        ),
       });
 
       const data = (await response.json()) as TsmResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Falha ao atualizar precos via TSM.");
+        throw new Error(data.error ?? "Falha ao atualizar precos.");
       }
 
       const byName = new Map<string, number>();
@@ -1146,7 +1151,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       });
 
       if (!silent) {
-        toast.success("Precos atualizados via TSM.");
+        toast.success(version === "retail" ? "Precos atualizados pela Blizzard." : "Precos atualizados via TSM.");
       }
 
       // Persist prices globally so all users see updated values
