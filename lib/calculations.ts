@@ -12,6 +12,8 @@ export interface CraftMetrics {
   bestChoice: "SELL" | "DISENCHANT" | "TIE";
 }
 
+const AUCTION_FEE_TBC = 0.05;
+
 export function roundValue(value: number, decimals: number) {
   const factor = 10 ** Math.max(0, decimals);
   return Math.round(value * factor) / factor;
@@ -48,7 +50,7 @@ export function calculateMetrics(
   const saleProfit = saleValue - auctionFee - craftCost;
 
   const disenchantExpectedValue =
-    calculateDisenchantExpectedValue(item) * item.quantityPerCraft * craftCount;
+    calculateDisenchantExpectedValue(item) * (1 - AUCTION_FEE_TBC) * item.quantityPerCraft * craftCount;
   const disenchantProfit = disenchantExpectedValue - craftCost;
 
   const saleROI = craftCost > 0 ? (saleProfit / craftCost) * 100 : 0;

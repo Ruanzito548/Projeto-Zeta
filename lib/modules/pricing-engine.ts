@@ -6,6 +6,8 @@ import type {
   RecipeComponent,
 } from "@/lib/modules/types";
 
+const AUCTION_FEE_TBC = 0.05;
+
 function sanitizePrice(value: number | null | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return 0;
@@ -18,7 +20,7 @@ function expectedDisenchantValue(item: ImportedCraftItem, priceById: Map<number,
   return item.disenchant.reduce((total, row) => {
     const price = priceById.get(row.itemId) ?? 0;
     const averageQty = (row.min + row.max) / 2;
-    return total + price * averageQty * row.chance;
+    return total + price * (1 - AUCTION_FEE_TBC) * averageQty * row.chance;
   }, 0);
 }
 
@@ -126,7 +128,7 @@ export function computeDashboardRows(
       return total + unit * component.quantity;
     }, 0);
 
-    const auctionProfit = craft.auctionPrice - craftCost;
+    const auctionProfit = craft.auctionPrice * (1 - AUCTION_FEE_TBC) - craftCost;
     const npcProfit = craft.vendorPrice - craftCost;
     const disenchantProfit = expectedDisenchantValue(craft, priceById) - craftCost;
 

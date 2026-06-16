@@ -6,6 +6,8 @@ import type {
   Reagent,
 } from "@/lib/app-types";
 
+const AUCTION_FEE_TBC = 0.05;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -40,19 +42,20 @@ export function computeCraftMetrics(
 
   const disenchantExpectedValue =
     craft.disenchantTable.reduce((sum, line) => sum + expectedDEValue(line), 0) *
+    (1 - AUCTION_FEE_TBC) *
     Math.max(1, craft.quantityProduced);
 
   const deBestCaseValue =
     craft.disenchantTable.reduce((sum, line) => {
       const chance = clamp(line.chancePercent, 0, 100) / 100;
       return sum + chance * Math.max(line.minQuantity, line.maxQuantity) * Math.max(0, line.materialPrice);
-    }, 0) * Math.max(1, craft.quantityProduced);
+    }, 0) * (1 - AUCTION_FEE_TBC) * Math.max(1, craft.quantityProduced);
 
   const deWorstCaseValue =
     craft.disenchantTable.reduce((sum, line) => {
       const chance = clamp(line.chancePercent, 0, 100) / 100;
       return sum + chance * Math.max(0, line.minQuantity) * Math.max(0, line.materialPrice);
-    }, 0) * Math.max(1, craft.quantityProduced);
+    }, 0) * (1 - AUCTION_FEE_TBC) * Math.max(1, craft.quantityProduced);
 
   const disenchantProfit = disenchantExpectedValue - totalCost;
   const saleRoi = totalCost > 0 ? (saleProfit / totalCost) * 100 : 0;
