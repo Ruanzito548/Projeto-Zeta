@@ -1781,6 +1781,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 {dashboardSortDirection === "asc" ? "Crescente" : "Decrescente"}
               </Button>
             </div>
+            <div className="rounded-xl border border-[rgba(69,190,95,0.25)] bg-[rgba(120,220,140,0.08)] px-4 py-3 text-xs text-[#bff3b9]">
+              Lucros de Leilao e Disenchant ja consideram a taxa da AH (5%) no calculo final.
+            </div>
             <div className="overflow-x-auto rounded-2xl border border-[rgba(69,190,95,0.22)] bg-[rgba(3,8,4,0.55)]">
               <table className="w-full min-w-[1180px] text-sm">
                 <thead className="bg-[linear-gradient(180deg,rgba(20,60,25,0.98),rgba(3,8,4,0.99))] text-xs uppercase tracking-[0.11em] text-[#a8ff9f]/90">
