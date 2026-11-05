@@ -1,4 +1,4 @@
-export type WowVersion = "tbc" | "retail" | "ascension";
+export type WowVersion = "tbc" | "retail" | "ascension" | "forever";
 
 export interface WowVersionMeta {
   id: WowVersion;
@@ -41,6 +41,16 @@ export const WOW_VERSIONS: WowVersionMeta[] = [
     accent: "from-emerald-300/20 to-cyan-500/10",
     logo: "https://wow.zamimg.com/images/wow/icons/large/inv_misc_orb_04.jpg",
   },
+  {
+    id: "forever",
+    name: "World of Warcraft Forever",
+    shortName: "Forever",
+    description:
+      "Servidor eternal com economia balanceada e progressao permanente para jogadores dedicados.",
+    wowheadPath: "tbc",
+    accent: "from-purple-300/20 to-pink-500/10",
+    logo: "https://wow.zamimg.com/images/wow/icons/large/inv_misc_orb_03.jpg",
+  },
 ];
 
 export const WOW_VERSION_MAP = Object.fromEntries(
@@ -48,5 +58,5 @@ export const WOW_VERSION_MAP = Object.fromEntries(
 ) as Record<WowVersion, WowVersionMeta>;
 
 export function isWowVersion(value: string): value is WowVersion {
-  return value === "tbc" || value === "retail" || value === "ascension";
+  return value === "tbc" || value === "retail" || value === "ascension" || value === "forever";
 }
