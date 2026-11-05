@@ -1748,7 +1748,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     <th className="px-4 py-3 text-left">Qualidade</th>
                     <th className="px-4 py-3 text-left">Fonte</th>
                     <th className="px-4 py-3 text-left">Origem</th>
-                    <th className="px-4 py-3 text-left">Preco TSM</th>
+                    {version !== "forever" && <th className="px-4 py-3 text-left">Preco TSM</th>}
                     {version === "forever" && <th className="px-4 py-3 text-left">Preco Leilao</th>}
                     <th className="px-4 py-3 text-left">Preco Calculado</th>
                     <th className="px-4 py-3 text-left">Valor Fixado</th>
@@ -1782,7 +1782,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                         </Select>
                       </td>
                       <td className="max-w-sm px-4 py-4 text-[#b8e6b8]">{entry.source}</td>
-                      <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(entry.tsmPrice)}</td>
+                      {version !== "forever" && <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(entry.tsmPrice)}</td>}
                       {version === "forever" && (
                         <td className="px-4 py-4 font-medium">
                           {entry.ahPrice > 0 ? (
