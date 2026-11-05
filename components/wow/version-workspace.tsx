@@ -476,10 +476,10 @@ async function loadDefaultSeedsForVersion(version: WowVersion): Promise<ReagentE
 
   for (const itemId of seedIds) {
     try {
-      const response = await fetch(`/api/wow/reagent?itemId=${itemId}`);
+      const response = await fetch(`/api/wow/reagent?version=${version}&itemId=${itemId}`);
       if (response.ok) {
-        const data = (await response.json()) as { item: ReagentEntry };
-        reagents.push(data.item);
+        const data = (await response.json()) as { reagent: ReagentEntry };
+        reagents.push(data.reagent);
       }
     } catch {
       // Skip items that fail to load
