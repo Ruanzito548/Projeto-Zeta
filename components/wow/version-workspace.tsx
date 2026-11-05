@@ -470,6 +470,25 @@ function hasSnapshotData(snapshot: ModuleSnapshot): boolean {
   return snapshot.reagents.length > 0 || snapshot.crafts.length > 0;
 }
 
+async function loadDefaultSeedsForVersion(version: WowVersion): Promise<ReagentEntry[]> {
+  const seedIds = VERSION_REAGENT_SEEDS[version] ?? [];
+  const reagents: ReagentEntry[] = [];
+
+  for (const itemId of seedIds) {
+    try {
+      const response = await fetch(`/api/wow/reagent?itemId=${itemId}`);
+      if (response.ok) {
+        const data = (await response.json()) as { item: ReagentEntry };
+        reagents.push(data.item);
+      }
+    } catch {
+      // Skip items that fail to load
+    }
+  }
+
+  return applyCalculatedReagentPrices(reagents, version);
+}
+
 function tabLabel(tab: TabId): string {
   if (tab === "dashboard") {
     return "Dashboard";
@@ -565,9 +584,20 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       // Use cloud data as-is — never apply seed cleanup to cloud to avoid corrupting global data
-      const hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0)
+      let hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0)
         ? cloud
         : hydratedLocal;
+
+      // For Forever version, load default seeds if no data exists yet
+      if (!hasSnapshotData(hydrated) && version === "forever") {
+        const seeds = await loadDefaultSeedsForVersion(version);
+        if (seeds.length > 0) {
+          hydrated = {
+            ...hydrated,
+            reagents: seeds,
+          };
+        }
+      }
 
       setSnapshot(hydrated);
 
