@@ -103,6 +103,7 @@ function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): 
     byId.set(entry.itemId, {
       ...entry,
       tsmPrice: prev.tsmPrice > 0 ? prev.tsmPrice : entry.tsmPrice,
+      ahPrice: prev.ahPrice > 0 ? prev.ahPrice : entry.ahPrice,
       calculatedPrice: prev.calculatedPrice ?? entry.calculatedPrice,
       source: prev.source || entry.source,
       priceSource: prev.priceSource,
@@ -126,6 +127,7 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     priceSource: item.recipe.length > 0 ? "CRAFTING" : "MATERIA_PRIMA",
     fixedPrice: null,
     tsmPrice: item.auctionPrice,
+    ahPrice: 0,
     calculatedPrice: null,
     recipe: item.recipe,
     updatedAt: new Date().toISOString(),
@@ -141,6 +143,7 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     priceSource: "MATERIA_PRIMA",
     fixedPrice: null,
     tsmPrice: 0,
+    ahPrice: 0,
     calculatedPrice: null,
     recipe: [],
     updatedAt: new Date().toISOString(),
@@ -589,7 +592,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
 
     const intervalId = window.setInterval(() => {
-      void refreshTsmPrices({ silent: true });
+      void refreshPrices({ silent: true });
     }, AUTO_TSM_REFRESH_MS);
 
     return () => {
@@ -1035,7 +1038,102 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
-  async function refreshTsmPrices(options?: { silent?: boolean }) {
+  async function refreshAuctionHousePrices(silent: boolean) {
+    setSyncingPrices(true);
+
+    try {
+      // Collect all item IDs to fetch
+      const itemIds = Array.from(new Set([
+        ...snapshot.reagents.map((entry) => entry.itemId),
+        ...personalSnapshot.reagents.map((entry) => entry.itemId),
+      ]));
+
+      if (itemIds.length === 0) {
+        if (!silent) {
+          toast.error("Nao ha itens para atualizar.");
+        }
+        return;
+      }
+
+      const response = await fetch(`/api/auctionhouse/prices?version=forever&items=${itemIds.join(",")}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = (await response.json()) as TsmResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Falha ao atualizar precos do AuctionHouse.fyi.");
+      }
+
+      const byId = new Map<number, number>();
+
+      for (const row of data.results ?? []) {
+        if (!row.ok || row.price <= 0) {
+          continue;
+        }
+
+        if (typeof row.itemId === "number") {
+          byId.set(row.itemId, row.price);
+        }
+      }
+
+      setSnapshot((prev) => {
+        const updatedReagents = prev.reagents.map((entry) => {
+          const ahPrice = byId.get(entry.itemId) ?? entry.ahPrice;
+
+          return {
+            ...entry,
+            ahPrice,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        return {
+          ...prev,
+          reagents: applyCalculatedReagentPrices(updatedReagents, version),
+          lastTsmSyncAt: new Date().toISOString(),
+        };
+      });
+
+      setPersonalSnapshot((prev) => {
+        const updatedReagents = prev.reagents.map((entry) => {
+          const ahPrice = byId.get(entry.itemId) ?? entry.ahPrice;
+
+          return {
+            ...entry,
+            ahPrice,
+            updatedAt: new Date().toISOString(),
+          };
+        });
+
+        return {
+          ...prev,
+          reagents: applyCalculatedReagentPrices(updatedReagents, version),
+        };
+      });
+
+      if (!silent) {
+        toast.success("Precos atualizados via AuctionHouse.fyi.");
+      }
+
+      // Persist prices globally
+      void saveGlobalReagentPricesToCloud(
+        snapshot.reagents,
+        snapshot.crafts,
+        new Date().toISOString(),
+        version,
+      );
+    } catch (error) {
+      if (!silent) {
+        toast.error(error instanceof Error ? error.message : "Erro ao atualizar precos do AuctionHouse.fyi.");
+      }
+    } finally {
+      setSyncingPrices(false);
+    }
+  }
+
+  async function refreshPrices(options?: { silent?: boolean }) {
     const silent = Boolean(options?.silent);
 
     if (syncingPrices) {
@@ -1046,6 +1144,12 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       if (!silent) {
         toast.error("Nao ha reagentes cadastrados para atualizar.");
       }
+      return;
+    }
+
+    // For WoW Forever, use AuctionHouse.fyi API
+    if (version === "forever") {
+      await refreshAuctionHousePrices(silent);
       return;
     }
 
@@ -1115,7 +1219,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
         return {
           ...prev,
-          reagents: applyCalculatedReagentPrices(updatedReagents),
+          reagents: applyCalculatedReagentPrices(updatedReagents, version),
           crafts: updatedCrafts,
           lastTsmSyncAt: new Date().toISOString(),
         };
@@ -1146,7 +1250,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         return {
           ...prev,
           importedCrafts: updatedCrafts,
-          reagents: applyCalculatedReagentPrices(updatedReagents),
+          reagents: applyCalculatedReagentPrices(updatedReagents, version),
         };
       });
 
@@ -1520,38 +1624,53 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             <p className="text-sm text-[#b8e6b8]">Gestao de reagentes com fontes de custo, valor fixo e rastreio por item.</p>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={() => void refreshTsmPrices()} disabled={syncingPrices} className="h-11">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
-              </Button>
-              <label className="cursor-pointer rounded-xl border border-[rgba(69,190,95,0.28)] bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-[#e8ffeb] shadow-[0_0_0_1px_rgba(34,197,94,0.18)_inset] hover:border-[rgba(158,255,138,0.4)]">
-                Enviar AppData.lua desta versao
-                <input
-                  type="file"
-                  accept=".lua,text/plain"
-                  className="hidden"
-                  onChange={onSelectTsmAppData}
-                />
-              </label>
-              <Button
-                onClick={useAutomaticTsmAppData}
-                variant="secondary"
-                className="h-11"
-                disabled={!appDataFileName && !appDataContent.trim()}
-              >
-                Usar AppData local automatico
-              </Button>
-              <Badge variant="info" className="h-8">
-                Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
-              </Badge>
-            </div>
+            {version !== "forever" && (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button onClick={() => void refreshPrices()} disabled={syncingPrices} className="h-11">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
+                  </Button>
+                  <label className="cursor-pointer rounded-xl border border-[rgba(69,190,95,0.28)] bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-[#e8ffeb] shadow-[0_0_0_1px_rgba(34,197,94,0.18)_inset] hover:border-[rgba(158,255,138,0.4)]">
+                    Enviar AppData.lua desta versao
+                    <input
+                      type="file"
+                      accept=".lua,text/plain"
+                      className="hidden"
+                      onChange={onSelectTsmAppData}
+                    />
+                  </label>
+                  <Button
+                    onClick={useAutomaticTsmAppData}
+                    variant="secondary"
+                    className="h-11"
+                    disabled={!appDataFileName && !appDataContent.trim()}
+                  >
+                    Usar AppData local automatico
+                  </Button>
+                  <Badge variant="info" className="h-8">
+                    Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
+                  </Badge>
+                </div>
 
-            <p className="text-sm text-[#4a8a4a]">
-              {appDataFileName
-                ? `Arquivo ativo nesta versao: ${appDataFileName}`
-                : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
-            </p>
+                <p className="text-sm text-[#4a8a4a]">
+                  {appDataFileName
+                    ? `Arquivo ativo nesta versao: ${appDataFileName}`
+                    : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
+                </p>
+              </>
+            )}
+            {version === "forever" && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={() => void refreshPrices()} disabled={syncingPrices} className="h-11">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {syncingPrices ? "Atualizando..." : "Atualizar precos via AuctionHouse.fyi"}
+                </Button>
+                <Badge variant="info" className="h-8">
+                  Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
+                </Badge>
+              </div>
+            )}
 
             <div className="space-y-3 rounded-2xl border border-[rgba(69,190,95,0.25)] bg-[linear-gradient(180deg,rgba(10,40,15,0.5),rgba(3,8,4,0.7))] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
               <p className="text-base font-semibold text-[#e8ffeb]">Adicionar Reagente Manual</p>

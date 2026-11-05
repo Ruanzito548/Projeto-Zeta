@@ -33,6 +33,7 @@ export interface ReagentEntry {
   priceSource: PriceSource;
   fixedPrice: number | null;
   tsmPrice: number;
+  ahPrice: number; // AuctionHouse.fyi price for WoW Forever
   calculatedPrice: number | null;
   recipe: RecipeComponent[];
   craftTimeSeconds?: number;

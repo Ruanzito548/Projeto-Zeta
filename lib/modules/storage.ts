@@ -37,6 +37,10 @@ function normalizeReagent(entry: ReagentEntry): ReagentEntry {
       typeof entry.fixedPrice === "number" && Number.isFinite(entry.fixedPrice) && entry.fixedPrice > 0
         ? Math.round(entry.fixedPrice)
         : null,
+    ahPrice:
+      typeof entry.ahPrice === "number" && Number.isFinite(entry.ahPrice) && entry.ahPrice > 0
+        ? Math.round(entry.ahPrice)
+        : 0,
   };
 }
 

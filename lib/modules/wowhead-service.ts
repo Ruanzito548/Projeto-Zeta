@@ -388,6 +388,7 @@ export async function importReagentFromWowhead(itemId: number, version: WowVersi
     priceSource: "MATERIA_PRIMA",
     fixedPrice: null,
     tsmPrice: 0,
+    ahPrice: 0,
     calculatedPrice: null,
     recipe,
     updatedAt: new Date().toISOString(),
