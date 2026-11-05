@@ -5,7 +5,7 @@ export interface WowVersionMeta {
   name: string;
   shortName: string;
   description: string;
-  wowheadPath: "tbc" | "retail";
+  wowheadPath: "tbc" | "retail" | "forever";
   accent: string;
   logo: string;
 }
@@ -47,7 +47,7 @@ export const WOW_VERSIONS: WowVersionMeta[] = [
     shortName: "Forever",
     description:
       "Servidor eternal com economia balanceada e progressao permanente para jogadores dedicados.",
-    wowheadPath: "tbc",
+    wowheadPath: "forever",
     accent: "from-purple-300/20 to-pink-500/10",
     logo: "https://wow.zamimg.com/images/wow/icons/large/inv_misc_orb_03.jpg",
   },
@@ -56,6 +56,15 @@ export const WOW_VERSIONS: WowVersionMeta[] = [
 export const WOW_VERSION_MAP = Object.fromEntries(
   WOW_VERSIONS.map((version) => [version.id, version]),
 ) as Record<WowVersion, WowVersionMeta>;
+
+export function getWowheadRoot(version: WowVersion): string {
+  const path = WOW_VERSION_MAP[version].wowheadPath;
+  return path === "retail" ? "https://www.wowhead.com" : `https://www.wowhead.com/${path}`;
+}
+
+export function getWowheadItemUrl(version: WowVersion, itemId: number): string {
+  return `${getWowheadRoot(version)}/item=${itemId}`;
+}
 
 export function isWowVersion(value: string): value is WowVersion {
   return value === "tbc" || value === "retail" || value === "ascension" || value === "forever";

@@ -7,7 +7,7 @@ import type {
   RecipeComponent,
 } from "@/lib/modules/types";
 import { guessCommodityByName } from "@/lib/modules/catalog";
-import type { WowVersion } from "@/lib/wow/versions";
+import { getWowheadItemUrl, getWowheadRoot, type WowVersion } from "@/lib/wow/versions";
 
 const qualityById: Record<number, Quality> = {
   0: "poor",
@@ -178,14 +178,6 @@ function parseItemIdFromQuery(query: string): number | null {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
-function buildWowheadRoot(version: WowVersion): string {
-  if (version === "tbc" || version === "ascension") {
-    return "https://www.wowhead.com/tbc";
-  }
-
-  return "https://www.wowhead.com";
-}
-
 function extractJsonArray(source: string, startIndex: number): string | null {
   const openIndex = source.indexOf("[", startIndex);
   if (openIndex < 0) {
@@ -328,7 +320,7 @@ async function enrichDisenchantIcons(
 }
 
 async function fetchWowheadXml(itemId: number, version: WowVersion): Promise<string> {
-  const root = buildWowheadRoot(version);
+  const root = getWowheadRoot(version);
   const response = await fetch(`${root}/item=${itemId}&xml`, {
     headers: { "User-Agent": "Mozilla/5.0" },
     cache: "no-store",
@@ -342,7 +334,7 @@ async function fetchWowheadXml(itemId: number, version: WowVersion): Promise<str
 }
 
 async function fetchWowheadHtml(itemId: number, version: WowVersion): Promise<string> {
-  const root = buildWowheadRoot(version);
+  const root = getWowheadRoot(version);
   const response = await fetch(`${root}/item=${itemId}`, {
     headers: { "User-Agent": "Mozilla/5.0" },
     cache: "no-store",
@@ -383,7 +375,7 @@ export async function importReagentFromWowhead(itemId: number, version: WowVersi
     name,
     icon: parseIcon(xml),
     quality: parseQuality(xml),
-    wowheadUrl: `${buildWowheadRoot(version)}/item=${itemId}`,
+    wowheadUrl: getWowheadItemUrl(version, itemId),
     source: buildSourceLabel(recipe),
     priceSource: "MATERIA_PRIMA",
     fixedPrice: null,
@@ -412,7 +404,7 @@ export async function importCraftItemFromWowhead(
 
   return {
     itemId,
-    wowheadUrl: `${buildWowheadRoot(version)}/item=${itemId}`,
+    wowheadUrl: getWowheadItemUrl(version, itemId),
     name,
     icon,
     quality: parseQuality(xml),

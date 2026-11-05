@@ -34,7 +34,7 @@ import type {
   ReagentEntry,
 } from "@/lib/modules/types";
 import { DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT, DEFAULT_SNAPSHOT } from "@/lib/modules/types";
-import type { WowVersion } from "@/lib/wow/versions";
+import { getWowheadItemUrl, type WowVersion } from "@/lib/wow/versions";
 
 const TABS = ["dashboard", "import", "reagents"] as const;
 
@@ -80,11 +80,6 @@ function combineReagents(base: ReagentEntry[], overlay: ReagentEntry[]): Reagent
   return Array.from(byId.values());
 }
 
-function wowheadItemUrl(version: WowVersion, itemId: number): string {
-  const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
-  return `${base}/item=${itemId}`;
-}
-
 function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): ReagentEntry[] {
   const byId = new Map<number, ReagentEntry>();
 
@@ -122,7 +117,7 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     name: item.name,
     icon: item.icon,
     quality: item.quality,
-    wowheadUrl: item.wowheadUrl || wowheadItemUrl(version, item.itemId),
+    wowheadUrl: item.wowheadUrl || getWowheadItemUrl(version, item.itemId),
     source: "Item importado para analise de lucro.",
     priceSource: item.recipe.length > 0 ? "CRAFTING" : "MATERIA_PRIMA",
     fixedPrice: null,
@@ -138,7 +133,7 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     name: entry.name,
     icon: entry.icon,
     quality: "uncommon",
-    wowheadUrl: wowheadItemUrl(version, entry.itemId),
+    wowheadUrl: getWowheadItemUrl(version, entry.itemId),
     source: `Resultado de disenchant de ${item.name}.`,
     priceSource: "MATERIA_PRIMA",
     fixedPrice: null,
