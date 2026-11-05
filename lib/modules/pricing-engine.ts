@@ -102,6 +102,13 @@ export function applyCalculatedReagentPrices(reagents: ReagentEntry[], version?:
 
   return reagents.map((entry) => {
     if (entry.priceSource === "MATERIA_PRIMA") {
+      // For WoW Forever, use ahPrice when available for materia prima items
+      if (version === "forever" && entry.ahPrice > 0) {
+        return {
+          ...entry,
+          calculatedPrice: entry.ahPrice,
+        };
+      }
       return {
         ...entry,
         calculatedPrice: null,
