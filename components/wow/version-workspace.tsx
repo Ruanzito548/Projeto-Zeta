@@ -277,8 +277,9 @@ function buildCraftScenarioTotals(
   craft: ImportedCraftItem,
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
+  version?: WowVersion,
 ) {
-  const adjustedPriceById = buildAdjustedPriceById(reagents, craftingScaleById);
+  const adjustedPriceById = buildAdjustedPriceById(reagents, craftingScaleById, version);
 
   return craft.recipe.reduce(
     (accumulator, component) => {
@@ -311,13 +312,19 @@ function safePrice(value: number | null | undefined): number {
   return value;
 }
 
-function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleById: Record<number, number>): number {
+function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleById: Record<number, number>, version?: WowVersion): number {
   if (!reagent) {
     return 0;
   }
 
   if (reagent.fixedPrice && reagent.fixedPrice > 0) {
     return safePrice(reagent.fixedPrice);
+  }
+
+  // For WoW Forever, prefer ahPrice over other sources
+  if (version === "forever" && reagent.ahPrice > 0) {
+    const scale = craftingScaleById[reagent.itemId] ?? 1;
+    return safePrice(reagent.ahPrice) * scale;
   }
 
   const base = reagent.calculatedPrice ?? reagent.tsmPrice ?? 0;
@@ -328,6 +335,7 @@ function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleBy
 function buildAdjustedPriceById(
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
+  version?: WowVersion,
 ): Map<number, number> {
   const byId = new Map<number, ReagentEntry>(reagents.map((entry) => [entry.itemId, entry]));
   const memo = new Map<number, number>();
@@ -340,7 +348,7 @@ function buildAdjustedPriceById(
 
     if (visiting.has(itemId)) {
       const reagent = byId.get(itemId);
-      const fallback = getAdjustedBasePrice(reagent, craftingScaleById);
+      const fallback = getAdjustedBasePrice(reagent, craftingScaleById, version);
       memo.set(itemId, fallback);
       return fallback;
     }
@@ -362,11 +370,11 @@ function buildAdjustedPriceById(
         return total + resolveCost(component.itemId, visiting) * component.quantity;
       }, 0);
 
-      const baseCraftValue = recipeCost > 0 ? recipeCost : safePrice(reagent.tsmPrice);
+      const baseCraftValue = recipeCost > 0 ? recipeCost : (version === "forever" && reagent.ahPrice > 0 ? safePrice(reagent.ahPrice) : safePrice(reagent.tsmPrice));
       const scale = craftingScaleById[reagent.itemId] ?? 1;
       value = baseCraftValue * scale;
     } else {
-      const baseValue = reagent.calculatedPrice ?? reagent.tsmPrice ?? 0;
+      const baseValue = version === "forever" && reagent.ahPrice > 0 ? reagent.ahPrice : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
       const scale = craftingScaleById[reagent.itemId] ?? 1;
       value = safePrice(baseValue) * scale;
     }
@@ -390,8 +398,9 @@ function buildDashboardRowsWithCraftingScale(
   crafts: ImportedCraftItem[],
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
+  version?: WowVersion,
 ): DashboardRow[] {
-  const priceById = buildAdjustedPriceById(reagents, craftingScaleById);
+  const priceById = buildAdjustedPriceById(reagents, craftingScaleById, version);
 
   return crafts.map((craft) => {
     const craftCost = craft.recipe.reduce((total, component) => {
@@ -666,7 +675,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   );
 
   const dashboardRows = useMemo(
-    () => buildDashboardRowsWithCraftingScale(visibleCrafts, visibleReagents, dashboardCraftingScaleById),
+    () => buildDashboardRowsWithCraftingScale(visibleCrafts, visibleReagents, dashboardCraftingScaleById, version),
     [visibleCrafts, visibleReagents, dashboardCraftingScaleById],
   );
 
@@ -714,7 +723,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   }, [dashboardRows, dashboardSortDirection, dashboardSortField, dashboardSortFrozenOrder, visibleCrafts]);
 
   const adjustedPriceById = useMemo(
-    () => buildAdjustedPriceById(visibleReagents, dashboardCraftingScaleById),
+    () => buildAdjustedPriceById(visibleReagents, dashboardCraftingScaleById, version),
     [visibleReagents, dashboardCraftingScaleById],
   );
 
