@@ -2173,7 +2173,12 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                                   </div>
                                 </div>
                                 <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#b8e6b8]">Disenchant</p>
+                                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#b8e6b8]">
+                                    Disenchant
+                                    {craft.disenchantEstimated ? (
+                                      <span className="ml-2 normal-case text-[#f4c76b]">Estimativa pelas regras clássicas</span>
+                                    ) : null}
+                                  </p>
                                   <div className="space-y-3">
                                     {craft.disenchant.length === 0 ? (
                                       <p className="text-sm text-[#4a8a4a]">Sem dados de disenchant.</p>

@@ -60,6 +60,7 @@ export interface ImportedCraftItem {
   craftTimeSeconds?: number;
   recipe: RecipeComponent[];
   disenchant: DisenchantEntry[];
+  disenchantEstimated?: boolean;
   auctionPrice: number;
   vendorPrice: number;
   isCommodity: boolean;

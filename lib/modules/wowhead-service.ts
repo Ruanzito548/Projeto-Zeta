@@ -279,6 +279,160 @@ function parseDisenchant(html: string): DisenchantEntry[] {
   }
 }
 
+type EstimatedDisenchantMaterial = Omit<DisenchantEntry, "icon">;
+
+const uncommonArmorDisenchantBands: Array<{
+  minLevel: number;
+  maxLevel: number;
+  materials: EstimatedDisenchantMaterial[];
+}> = [
+  {
+    minLevel: 5,
+    maxLevel: 15,
+    materials: [
+      { itemId: 10940, name: "Strange Dust", chance: 0.8, min: 1, max: 2 },
+      { itemId: 10938, name: "Lesser Magic Essence", chance: 0.2, min: 1, max: 2 },
+    ],
+  },
+  {
+    minLevel: 16,
+    maxLevel: 20,
+    materials: [
+      { itemId: 10940, name: "Strange Dust", chance: 0.75, min: 2, max: 3 },
+      { itemId: 10939, name: "Greater Magic Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 10978, name: "Small Glimmering Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 21,
+    maxLevel: 25,
+    materials: [
+      { itemId: 10940, name: "Strange Dust", chance: 0.75, min: 4, max: 6 },
+      { itemId: 10998, name: "Lesser Astral Essence", chance: 0.15, min: 1, max: 2 },
+      { itemId: 10978, name: "Small Glimmering Shard", chance: 0.1, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 26,
+    maxLevel: 30,
+    materials: [
+      { itemId: 11083, name: "Soul Dust", chance: 0.75, min: 1, max: 2 },
+      { itemId: 11082, name: "Greater Astral Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 11084, name: "Large Glimmering Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 31,
+    maxLevel: 35,
+    materials: [
+      { itemId: 11083, name: "Soul Dust", chance: 0.75, min: 2, max: 5 },
+      { itemId: 11134, name: "Lesser Mystic Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 11086, name: "Small Glowing Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 36,
+    maxLevel: 40,
+    materials: [
+      { itemId: 11137, name: "Vision Dust", chance: 0.75, min: 1, max: 2 },
+      { itemId: 11135, name: "Greater Mystic Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 11139, name: "Large Glowing Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 41,
+    maxLevel: 45,
+    materials: [
+      { itemId: 11137, name: "Vision Dust", chance: 0.75, min: 2, max: 5 },
+      { itemId: 11174, name: "Lesser Nether Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 11177, name: "Small Radiant Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 46,
+    maxLevel: 50,
+    materials: [
+      { itemId: 11176, name: "Dream Dust", chance: 0.75, min: 1, max: 2 },
+      { itemId: 11175, name: "Greater Nether Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 11178, name: "Large Radiant Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 51,
+    maxLevel: 55,
+    materials: [
+      { itemId: 11176, name: "Dream Dust", chance: 0.75, min: 2, max: 5 },
+      { itemId: 16202, name: "Lesser Eternal Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 14343, name: "Small Brilliant Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 56,
+    maxLevel: 60,
+    materials: [
+      { itemId: 16204, name: "Illusion Dust", chance: 0.75, min: 1, max: 2 },
+      { itemId: 16203, name: "Greater Eternal Essence", chance: 0.2, min: 1, max: 2 },
+      { itemId: 14344, name: "Large Brilliant Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 61,
+    maxLevel: 65,
+    materials: [
+      { itemId: 16204, name: "Illusion Dust", chance: 0.75, min: 2, max: 5 },
+      { itemId: 16203, name: "Greater Eternal Essence", chance: 0.2, min: 2, max: 3 },
+      { itemId: 14344, name: "Large Brilliant Shard", chance: 0.05, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 66,
+    maxLevel: 79,
+    materials: [
+      { itemId: 22445, name: "Arcane Dust", chance: 0.75, min: 1, max: 2 },
+      { itemId: 22447, name: "Lesser Planar Essence", chance: 0.22, min: 1, max: 2 },
+      { itemId: 22448, name: "Small Prismatic Shard", chance: 0.03, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 80,
+    maxLevel: 99,
+    materials: [
+      { itemId: 22445, name: "Arcane Dust", chance: 0.75, min: 2, max: 3 },
+      { itemId: 22447, name: "Lesser Planar Essence", chance: 0.22, min: 2, max: 3 },
+      { itemId: 22448, name: "Small Prismatic Shard", chance: 0.03, min: 1, max: 1 },
+    ],
+  },
+  {
+    minLevel: 100,
+    maxLevel: 120,
+    materials: [
+      { itemId: 22445, name: "Arcane Dust", chance: 0.75, min: 2, max: 5 },
+      { itemId: 22446, name: "Greater Planar Essence", chance: 0.22, min: 1, max: 2 },
+      { itemId: 22449, name: "Large Prismatic Shard", chance: 0.03, min: 1, max: 1 },
+    ],
+  },
+];
+
+function estimateClassicArmorDisenchant(xml: string, version: WowVersion): DisenchantEntry[] {
+  if (
+    (version !== "tbc" && version !== "ascension" && version !== "forever")
+    || parseQuality(xml) !== "uncommon"
+    || Number(xml.match(/<class[^>]*id="(\d+)"/i)?.[1]) !== 4
+  ) {
+    return [];
+  }
+
+  const itemLevel = parseNumberTag(xml, "level");
+  const band = uncommonArmorDisenchantBands.find(
+    (entry) => itemLevel >= entry.minLevel && itemLevel <= entry.maxLevel,
+  );
+
+  return band?.materials.map((material) => ({
+    ...material,
+    icon: fallbackIcon,
+  })) ?? [];
+}
+
 const fallbackIcon = "https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg";
 const iconByItemIdCache = new Map<string, string>();
 
@@ -333,15 +487,59 @@ async function fetchWowheadXml(itemId: number, version: WowVersion): Promise<str
   return response.text();
 }
 
-async function fetchWowheadHtml(itemId: number, version: WowVersion): Promise<string> {
-  const root = getWowheadRoot(version);
-  const response = await fetch(`${root}/item=${itemId}`, {
-    headers: { "User-Agent": "Mozilla/5.0" },
+function getWowheadPageUrl(
+  candidate: string,
+  itemId: number,
+  version: WowVersion,
+): string | null {
+  try {
+    const url = new URL(candidate);
+    const root = new URL(getWowheadRoot(version));
+    const requiredPath = root.pathname.replace(/\/$/, "");
+    const pathMatches = !requiredPath
+      || url.pathname === requiredPath
+      || url.pathname.startsWith(`${requiredPath}/`);
+    const pageItemId = url.pathname.match(/(?:^|\/)item=(\d+)(?:\/|$)/)?.[1];
+
+    if (
+      url.protocol !== "https:"
+      || url.hostname !== "www.wowhead.com"
+      || !pathMatches
+      || Number(pageItemId) !== itemId
+    ) {
+      return null;
+    }
+
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchWowheadHtml(
+  itemId: number,
+  version: WowVersion,
+  pageUrl: string,
+): Promise<string | null> {
+  const response = await fetch(pageUrl, {
+    headers: {
+      "Accept": "text/html,application/xhtml+xml",
+      "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+      "Referer": `${getWowheadRoot(version)}/`,
+      "User-Agent": "Mozilla/5.0",
+    },
     cache: "no-store",
   });
 
+  if (response.status === 202 || response.status === 403) {
+    return null;
+  }
+
   if (!response.ok) {
-    return "";
+    throw new Error(
+      `O Wowhead nao permitiu ler os resultados de desencantamento do item ${itemId} (HTTP ${response.status}).`,
+    );
   }
 
   return response.text();
@@ -392,15 +590,23 @@ export async function importCraftItemFromWowhead(
   version: WowVersion,
 ): Promise<ImportedCraftItem> {
   const itemId = await getWowheadItemIdFromInput(query);
-  const [xml, html] = await Promise.all([
-    fetchWowheadXml(itemId, version),
-    fetchWowheadHtml(itemId, version),
-  ]);
+  const xml = await fetchWowheadXml(itemId, version);
+  const queryPageUrl = getWowheadPageUrl(query, itemId, version);
+  const xmlPageUrl = getWowheadPageUrl(parseTag(xml, "link"), itemId, version);
+  const pageUrl = queryPageUrl ?? xmlPageUrl ?? getWowheadItemUrl(version, itemId);
+  const html = await fetchWowheadHtml(itemId, version, pageUrl);
 
   const name = parseTag(xml, "name") || `Item ${itemId}`;
   const icon = parseIcon(xml);
   const recipe = parseRecipe(xml);
-  const disenchant = await enrichDisenchantIcons(parseDisenchant(html), version);
+  const wowheadDisenchant = html ? parseDisenchant(html) : [];
+  const estimatedDisenchant = wowheadDisenchant.length === 0
+    ? estimateClassicArmorDisenchant(xml, version)
+    : [];
+  const disenchant = await enrichDisenchantIcons(
+    wowheadDisenchant.length > 0 ? wowheadDisenchant : estimatedDisenchant,
+    version,
+  );
 
   return {
     itemId,
@@ -412,6 +618,7 @@ export async function importCraftItemFromWowhead(
     quantityProduced: parseProducedQuantity(xml),
     recipe,
     disenchant,
+    ...(estimatedDisenchant.length > 0 ? { disenchantEstimated: true } : {}),
     auctionPrice: 0,
     vendorPrice: parseSellPrice(xml),
     isCommodity: guessCommodityByName(name),
