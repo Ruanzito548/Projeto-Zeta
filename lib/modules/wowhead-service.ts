@@ -226,15 +226,13 @@ function extractJsonArray(source: string, startIndex: number): string | null {
 }
 
 function parseDisenchant(html: string): DisenchantEntry[] {
-  const marker = "id: 'disenchanting'";
-  const markerIndex = html.indexOf(marker);
+  const marker = /id:\s*(['"])disenchanting\1/i.exec(html);
 
-  if (markerIndex < 0) {
+  if (!marker || marker.index === undefined) {
     return [];
   }
 
-  const dataIndex = html.indexOf("data:", markerIndex);
-
+  const dataIndex = html.indexOf("data:", marker.index + marker[0].length);
   if (dataIndex < 0) {
     return [];
   }
@@ -422,7 +420,8 @@ function estimateClassicArmorDisenchant(xml: string, version: WowVersion): Disen
     return [];
   }
 
-  const itemLevel = parseNumberTag(xml, "level");
+  const itemLevel = parseNumberTag(xml, "level")
+    || Number(parseTag(xml, "jsonEquip").match(/"itemlevel"\s*:\s*(\d+)/i)?.[1] ?? "0");
   const band = uncommonArmorDisenchantBands.find(
     (entry) => itemLevel >= entry.minLevel && itemLevel <= entry.maxLevel,
   );
@@ -575,7 +574,7 @@ export async function importReagentFromWowhead(itemId: number, version: WowVersi
     quality: parseQuality(xml),
     wowheadUrl: getWowheadItemUrl(version, itemId),
     source: buildSourceLabel(recipe),
-    priceSource: "MATERIA_PRIMA",
+    priceSource: recipe.length > 0 ? "CRAFTING" : "MATERIA_PRIMA",
     fixedPrice: null,
     tsmPrice: 0,
     ahPrice: 0,

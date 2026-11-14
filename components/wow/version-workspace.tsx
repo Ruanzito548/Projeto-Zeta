@@ -98,10 +98,12 @@ function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): 
     byId.set(entry.itemId, {
       ...entry,
       tsmPrice: prev.tsmPrice > 0 ? prev.tsmPrice : entry.tsmPrice,
-      ahPrice: prev.ahPrice > 0 ? prev.ahPrice : entry.ahPrice,
+      ahPrice: entry.ahPrice > 0 ? entry.ahPrice : prev.ahPrice,
       calculatedPrice: prev.calculatedPrice ?? entry.calculatedPrice,
       source: prev.source || entry.source,
-      priceSource: prev.priceSource,
+      priceSource: prev.priceSource === "MATERIA_PRIMA" && entry.recipe.length > 0
+        ? "CRAFTING"
+        : prev.priceSource,
       fixedPrice: prev.fixedPrice,
       recipe: prev.recipe.length > 0 ? prev.recipe : entry.recipe,
       updatedAt: new Date().toISOString(),
@@ -122,7 +124,7 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     priceSource: item.recipe.length > 0 ? "CRAFTING" : "MATERIA_PRIMA",
     fixedPrice: null,
     tsmPrice: item.auctionPrice,
-    ahPrice: 0,
+    ahPrice: version === "forever" ? item.auctionPrice : 0,
     calculatedPrice: null,
     recipe: item.recipe,
     updatedAt: new Date().toISOString(),
@@ -915,36 +917,114 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       const base = data.item;
-      const knownReagents = new Set<number>([
-        ...snapshot.reagents.map((entry) => entry.itemId),
-        ...personalSnapshot.reagents.map((entry) => entry.itemId),
-      ]);
-      const missing = base.recipe.filter((row) => !knownReagents.has(row.itemId));
+      const targetReagents = importTarget === "global"
+        ? snapshot.reagents
+        : combineReagents(snapshot.reagents, personalSnapshot.reagents);
+      const persistedTargetReagents = importTarget === "global"
+        ? snapshot.reagents
+        : personalSnapshot.reagents;
+      const knownReagents = new Map(targetReagents.map((entry) => [entry.itemId, entry]));
+      const importedById = new Map<number, ReagentEntry>();
+      const visited = new Set<number>([base.itemId]);
+      let pendingItemIds = base.recipe.map((component) => component.itemId);
 
-      let importedReagents: ReagentEntry[] = [];
+      while (pendingItemIds.length > 0) {
+        const itemIds = Array.from(new Set(pendingItemIds)).filter((itemId) => !visited.has(itemId));
+        pendingItemIds = [];
+        itemIds.forEach((itemId) => visited.add(itemId));
 
-      if (missing.length > 0) {
-        const imported = await Promise.all(
-          missing.map(async (row) => {
+        const reagents = await Promise.all(
+          itemIds.map(async (itemId) => {
+            const existing = knownReagents.get(itemId);
+            if (existing && !existing.icon.includes("inv_misc_questionmark")) {
+                if (existing.recipe.length > 0 && existing.priceSource === "MATERIA_PRIMA") {
+                  const craftingReagent: ReagentEntry = { ...existing, priceSource: "CRAFTING" };
+                  knownReagents.set(itemId, craftingReagent);
+                  importedById.set(itemId, craftingReagent);
+                  return craftingReagent;
+                }
+
+                return existing;
+              }
+
             const reagentResponse = await fetch(
-              `/api/wow/reagent?version=${version}&itemId=${row.itemId}`,
+              `/api/wow/reagent?version=${version}&itemId=${itemId}`,
               { cache: "no-store" },
             );
-
-            if (!reagentResponse.ok) {
-              return null;
-            }
-
             const payload = (await reagentResponse.json()) as {
               reagent?: ReagentEntry;
+              error?: string;
             };
 
-            return payload.reagent ?? null;
+            if (!reagentResponse.ok || !payload.reagent) {
+              throw new Error(payload.error ?? `Nao foi possivel importar o reagente ${itemId}.`);
+            }
+
+            importedById.set(itemId, payload.reagent);
+            knownReagents.set(itemId, payload.reagent);
+            return payload.reagent;
           }),
         );
 
-        importedReagents = imported.filter((entry): entry is ReagentEntry => Boolean(entry));
+        pendingItemIds = reagents.flatMap((reagent) =>
+          reagent.recipe.map((component) => component.itemId),
+        );
       }
+
+      const importedReagents = Array.from(importedById.values());
+      const reagentById = new Map(
+        [...targetReagents, ...importedReagents].map((reagent) => [reagent.itemId, reagent]),
+      );
+      base.recipe = base.recipe.map((component) => {
+        const reagent = reagentById.get(component.itemId);
+        return reagent
+          ? { ...component, name: reagent.name, icon: reagent.icon }
+          : component;
+      });
+
+      const auctionPriceById = new Map<number, number>();
+      if (version === "forever") {
+        const auctionItemIds = Array.from(new Set([
+          ...Array.from(visited).filter((itemId) => itemId !== base.itemId),
+          ...base.disenchant.map((entry) => entry.itemId),
+        ]));
+
+        if (auctionItemIds.length > 0) {
+          const priceResponse = await fetch(
+            `/api/auctionhouse/prices?version=forever&items=${auctionItemIds.join(",")}`,
+            { cache: "no-store" },
+          );
+          const priceData = (await priceResponse.json()) as TsmResponse;
+
+          if (!priceResponse.ok) {
+            throw new Error(priceData.error ?? "Falha ao buscar precos no AuctionHouse.fyi.");
+          }
+
+          for (const row of priceData.results ?? []) {
+            if (row.ok && row.price > 0 && typeof row.itemId === "number") {
+              auctionPriceById.set(row.itemId, row.price);
+            }
+          }
+        }
+      }
+
+      const reagentEntriesForImport = new Map<number, ReagentEntry>();
+      for (const reagent of persistedTargetReagents) {
+        if (visited.has(reagent.itemId)) {
+          reagentEntriesForImport.set(reagent.itemId, reagent);
+        }
+      }
+      for (const reagent of importedReagents) {
+        reagentEntriesForImport.set(reagent.itemId, reagent);
+      }
+      const pricedImportedReagents = Array.from(reagentEntriesForImport.values()).map((reagent) => ({
+        ...reagent,
+        ahPrice: auctionPriceById.get(reagent.itemId) ?? reagent.ahPrice,
+      }));
+      const trackedPriceEntries = toTrackedPriceEntries(base, version).map((reagent) => ({
+        ...reagent,
+        ahPrice: auctionPriceById.get(reagent.itemId) ?? reagent.ahPrice,
+      }));
 
       if (importTarget === "global") {
         const newCraft = { ...base, updatedAt: new Date().toISOString() };
@@ -952,8 +1032,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
         setSnapshot((prev) => {
           const uniqueReagents = mergePriceEntries(prev.reagents, [
-            ...importedReagents,
-            ...toTrackedPriceEntries(base, version),
+            ...pricedImportedReagents,
+            ...trackedPriceEntries,
           ]);
 
           const nextCrafts = [
@@ -974,16 +1054,16 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         void saveGlobalCraftToCloud(
           newCraft,
           [
-            ...importedReagents,
-            ...toTrackedPriceEntries(base, version),
+            ...pricedImportedReagents,
+            ...trackedPriceEntries,
           ],
           version,
         );
       } else {
         setPersonalSnapshot((prev) => {
           const uniqueReagents = mergePriceEntries(prev.reagents, [
-            ...importedReagents,
-            ...toTrackedPriceEntries(base, version),
+            ...pricedImportedReagents,
+            ...trackedPriceEntries,
           ]);
 
           const nextCrafts = [
