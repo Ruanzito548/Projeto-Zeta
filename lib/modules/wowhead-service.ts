@@ -411,10 +411,26 @@ const uncommonArmorDisenchantBands: Array<{
   },
 ];
 
+const rareArmorDisenchantBands: Array<{
+  minLevel: number;
+  maxLevel: number;
+  material: EstimatedDisenchantMaterial;
+}> = [
+  { minLevel: 1, maxLevel: 25, material: { itemId: 10978, name: "Small Glimmering Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 26, maxLevel: 30, material: { itemId: 11084, name: "Large Glimmering Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 31, maxLevel: 35, material: { itemId: 11138, name: "Small Glowing Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 36, maxLevel: 40, material: { itemId: 11139, name: "Large Glowing Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 41, maxLevel: 45, material: { itemId: 11177, name: "Small Radiant Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 46, maxLevel: 50, material: { itemId: 11178, name: "Large Radiant Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 51, maxLevel: 55, material: { itemId: 14343, name: "Small Brilliant Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 56, maxLevel: 65, material: { itemId: 14344, name: "Large Brilliant Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 66, maxLevel: 99, material: { itemId: 22448, name: "Small Prismatic Shard", chance: 1, min: 1, max: 1 } },
+  { minLevel: 100, maxLevel: 120, material: { itemId: 22449, name: "Large Prismatic Shard", chance: 1, min: 1, max: 1 } },
+];
+
 function estimateClassicArmorDisenchant(xml: string, version: WowVersion): DisenchantEntry[] {
   if (
     (version !== "tbc" && version !== "ascension" && version !== "forever")
-    || parseQuality(xml) !== "uncommon"
     || Number(xml.match(/<class[^>]*id="(\d+)"/i)?.[1]) !== 4
   ) {
     return [];
@@ -422,6 +438,19 @@ function estimateClassicArmorDisenchant(xml: string, version: WowVersion): Disen
 
   const itemLevel = parseNumberTag(xml, "level")
     || Number(parseTag(xml, "jsonEquip").match(/"itemlevel"\s*:\s*(\d+)/i)?.[1] ?? "0");
+
+  if (parseQuality(xml) === "rare") {
+    const band = rareArmorDisenchantBands.find(
+      (entry) => itemLevel >= entry.minLevel && itemLevel <= entry.maxLevel,
+    );
+
+    return band ? [{ ...band.material, icon: fallbackIcon }] : [];
+  }
+
+  if (parseQuality(xml) !== "uncommon") {
+    return [];
+  }
+
   const band = uncommonArmorDisenchantBands.find(
     (entry) => itemLevel >= entry.minLevel && itemLevel <= entry.maxLevel,
   );
