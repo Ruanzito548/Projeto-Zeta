@@ -1,3 +1,4 @@
+import { fetchItemPricesFromAuctionHouse } from "@/lib/modules/auctionhouse-service";
 import { importCraftItemFromWowhead } from "@/lib/modules/wowhead-service";
 import { isWowVersion } from "@/lib/wow/versions";
 import { NextResponse } from "next/server";
@@ -20,6 +21,14 @@ export async function POST(request: Request) {
 
   try {
     const item = await importCraftItemFromWowhead(query, version);
+
+    if (version === "forever") {
+      const [price] = await fetchItemPricesFromAuctionHouse([item.itemId]);
+      if (price?.ok) {
+        item.auctionPrice = price.price;
+      }
+    }
+
     return NextResponse.json({ item });
   } catch (error) {
     return NextResponse.json(
