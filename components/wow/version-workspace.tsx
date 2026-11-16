@@ -34,7 +34,7 @@ import type {
   ReagentEntry,
 } from "@/lib/modules/types";
 import { DEFAULT_PERSONAL_DASHBOARD_SNAPSHOT, DEFAULT_SNAPSHOT } from "@/lib/modules/types";
-import { getWowheadItemUrl, type WowVersion } from "@/lib/wow/versions";
+import type { WowVersion } from "@/lib/wow/versions";
 
 const TABS = ["dashboard", "import", "reagents"] as const;
 
@@ -80,6 +80,11 @@ function combineReagents(base: ReagentEntry[], overlay: ReagentEntry[]): Reagent
   return Array.from(byId.values());
 }
 
+function wowheadItemUrl(version: WowVersion, itemId: number): string {
+  const base = version === "retail" ? "https://www.wowhead.com" : "https://www.wowhead.com/tbc";
+  return `${base}/item=${itemId}`;
+}
+
 function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): ReagentEntry[] {
   const byId = new Map<number, ReagentEntry>();
 
@@ -98,12 +103,9 @@ function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): 
     byId.set(entry.itemId, {
       ...entry,
       tsmPrice: prev.tsmPrice > 0 ? prev.tsmPrice : entry.tsmPrice,
-      ahPrice: entry.ahPrice > 0 ? entry.ahPrice : prev.ahPrice,
       calculatedPrice: prev.calculatedPrice ?? entry.calculatedPrice,
       source: prev.source || entry.source,
-      priceSource: prev.priceSource === "MATERIA_PRIMA" && entry.recipe.length > 0
-        ? "CRAFTING"
-        : prev.priceSource,
+      priceSource: prev.priceSource,
       fixedPrice: prev.fixedPrice,
       recipe: prev.recipe.length > 0 ? prev.recipe : entry.recipe,
       updatedAt: new Date().toISOString(),
@@ -119,12 +121,12 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     name: item.name,
     icon: item.icon,
     quality: item.quality,
-    wowheadUrl: item.wowheadUrl || getWowheadItemUrl(version, item.itemId),
+    wowheadUrl: item.wowheadUrl || wowheadItemUrl(version, item.itemId),
     source: "Item importado para analise de lucro.",
     priceSource: item.recipe.length > 0 ? "CRAFTING" : "MATERIA_PRIMA",
     fixedPrice: null,
     tsmPrice: item.auctionPrice,
-    ahPrice: version === "forever" ? item.auctionPrice : 0,
+    ahPrice: item.auctionPrice,
     calculatedPrice: null,
     recipe: item.recipe,
     updatedAt: new Date().toISOString(),
@@ -135,7 +137,7 @@ function toTrackedPriceEntries(item: ImportedCraftItem, version: WowVersion): Re
     name: entry.name,
     icon: entry.icon,
     quality: "uncommon",
-    wowheadUrl: getWowheadItemUrl(version, entry.itemId),
+    wowheadUrl: wowheadItemUrl(version, entry.itemId),
     source: `Resultado de disenchant de ${item.name}.`,
     priceSource: "MATERIA_PRIMA",
     fixedPrice: null,
@@ -274,9 +276,8 @@ function buildCraftScenarioTotals(
   craft: ImportedCraftItem,
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
-  version?: WowVersion,
 ) {
-  const adjustedPriceById = buildAdjustedPriceById(reagents, craftingScaleById, version);
+  const adjustedPriceById = buildAdjustedPriceById(reagents, craftingScaleById);
 
   return craft.recipe.reduce(
     (accumulator, component) => {
@@ -309,19 +310,13 @@ function safePrice(value: number | null | undefined): number {
   return value;
 }
 
-function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleById: Record<number, number>, version?: WowVersion): number {
+function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleById: Record<number, number>): number {
   if (!reagent) {
     return 0;
   }
 
   if (reagent.fixedPrice && reagent.fixedPrice > 0) {
     return safePrice(reagent.fixedPrice);
-  }
-
-  // For WoW Forever, prefer ahPrice over other sources
-  if (version === "forever" && reagent.ahPrice > 0) {
-    const scale = craftingScaleById[reagent.itemId] ?? 1;
-    return safePrice(reagent.ahPrice) * scale;
   }
 
   const base = reagent.calculatedPrice ?? reagent.tsmPrice ?? 0;
@@ -332,7 +327,6 @@ function getAdjustedBasePrice(reagent: ReagentEntry | undefined, craftingScaleBy
 function buildAdjustedPriceById(
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
-  version?: WowVersion,
 ): Map<number, number> {
   const byId = new Map<number, ReagentEntry>(reagents.map((entry) => [entry.itemId, entry]));
   const memo = new Map<number, number>();
@@ -345,7 +339,7 @@ function buildAdjustedPriceById(
 
     if (visiting.has(itemId)) {
       const reagent = byId.get(itemId);
-      const fallback = getAdjustedBasePrice(reagent, craftingScaleById, version);
+      const fallback = getAdjustedBasePrice(reagent, craftingScaleById);
       memo.set(itemId, fallback);
       return fallback;
     }
@@ -367,11 +361,11 @@ function buildAdjustedPriceById(
         return total + resolveCost(component.itemId, visiting) * component.quantity;
       }, 0);
 
-      const baseCraftValue = recipeCost > 0 ? recipeCost : (version === "forever" && reagent.ahPrice > 0 ? safePrice(reagent.ahPrice) : safePrice(reagent.tsmPrice));
+      const baseCraftValue = recipeCost > 0 ? recipeCost : safePrice(reagent.tsmPrice);
       const scale = craftingScaleById[reagent.itemId] ?? 1;
       value = baseCraftValue * scale;
     } else {
-      const baseValue = version === "forever" && reagent.ahPrice > 0 ? reagent.ahPrice : (reagent.calculatedPrice ?? reagent.tsmPrice ?? 0);
+      const baseValue = reagent.calculatedPrice ?? reagent.tsmPrice ?? 0;
       const scale = craftingScaleById[reagent.itemId] ?? 1;
       value = safePrice(baseValue) * scale;
     }
@@ -395,9 +389,8 @@ function buildDashboardRowsWithCraftingScale(
   crafts: ImportedCraftItem[],
   reagents: ReagentEntry[],
   craftingScaleById: Record<number, number>,
-  version?: WowVersion,
 ): DashboardRow[] {
-  const priceById = buildAdjustedPriceById(reagents, craftingScaleById, version);
+  const priceById = buildAdjustedPriceById(reagents, craftingScaleById);
 
   return crafts.map((craft) => {
     const craftCost = craft.recipe.reduce((total, component) => {
@@ -467,25 +460,6 @@ function hasSnapshotData(snapshot: ModuleSnapshot): boolean {
   return snapshot.reagents.length > 0 || snapshot.crafts.length > 0;
 }
 
-async function loadDefaultSeedsForVersion(version: WowVersion): Promise<ReagentEntry[]> {
-  const seedIds = VERSION_REAGENT_SEEDS[version] ?? [];
-  const reagents: ReagentEntry[] = [];
-
-  for (const itemId of seedIds) {
-    try {
-      const response = await fetch(`/api/wow/reagent?version=${version}&itemId=${itemId}`);
-      if (response.ok) {
-        const data = (await response.json()) as { reagent: ReagentEntry };
-        reagents.push(data.reagent);
-      }
-    } catch {
-      // Skip items that fail to load
-    }
-  }
-
-  return applyCalculatedReagentPrices(reagents, version);
-}
-
 function tabLabel(tab: TabId): string {
   if (tab === "dashboard") {
     return "Dashboard";
@@ -508,13 +482,14 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   const [snapshot, setSnapshot] = useState<ModuleSnapshot>(() => emptySnapshot(version));
   const [personalSnapshot, setPersonalSnapshot] = useState<PersonalDashboardSnapshot>(() => emptyPersonalSnapshot(version));
   const [query, setQuery] = useState("");
+  const [dashboardQuery, setDashboardQuery] = useState("");
   const [importInput, setImportInput] = useState("");
   const [importReagentInput, setImportReagentInput] = useState("");
   const [importingItem, setImportingItem] = useState(false);
   const [importingReagent, setImportingReagent] = useState(false);
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
-  const [expandedCraftIds, setExpandedCraftIds] = useState<Record<number, boolean>>({});
+  const [selectedDashboardItemId, setSelectedDashboardItemId] = useState<number | null>(null);
   const [expandedRecipeIds, setExpandedRecipeIds] = useState<Record<string, boolean>>({});
   const [dashboardCraftingScaleById, setDashboardCraftingScaleById] = useState<Record<number, number>>({});
   const [dashboardCraftQtyById, setDashboardCraftQtyById] = useState<Record<number, number>>({});
@@ -581,20 +556,9 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       // Use cloud data as-is — never apply seed cleanup to cloud to avoid corrupting global data
-      let hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0)
+      const hydrated = cloud && (cloud.crafts.length > 0 || cloud.reagents.length > 0)
         ? cloud
         : hydratedLocal;
-
-      // For Forever version, load default seeds if no data exists yet
-      if (!hasSnapshotData(hydrated) && version === "forever") {
-        const seeds = await loadDefaultSeedsForVersion(version);
-        if (seeds.length > 0) {
-          hydrated = {
-            ...hydrated,
-            reagents: seeds,
-          };
-        }
-      }
 
       setSnapshot(hydrated);
 
@@ -628,7 +592,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
 
     const intervalId = window.setInterval(() => {
-      void refreshPrices({ silent: true });
+      void refreshTsmPrices({ silent: true });
     }, AUTO_TSM_REFRESH_MS);
 
     return () => {
@@ -702,12 +666,28 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
   );
 
   const dashboardRows = useMemo(
-    () => buildDashboardRowsWithCraftingScale(visibleCrafts, visibleReagents, dashboardCraftingScaleById, version),
+    () => buildDashboardRowsWithCraftingScale(visibleCrafts, visibleReagents, dashboardCraftingScaleById),
     [visibleCrafts, visibleReagents, dashboardCraftingScaleById],
   );
 
+  const filteredDashboardRows = useMemo(() => {
+    const normalized = dashboardQuery.trim().toLowerCase();
+
+    if (!normalized) {
+      return dashboardRows;
+    }
+
+    return dashboardRows.filter((row) => {
+      return (
+        row.name.toLowerCase().includes(normalized) ||
+        row.profession.toLowerCase().includes(normalized) ||
+        String(row.itemId).includes(normalized)
+      );
+    });
+  }, [dashboardQuery, dashboardRows]);
+
   const sortedDashboardRows = useMemo(() => {
-    const list = [...dashboardRows];
+    const list = [...filteredDashboardRows];
 
     if (dashboardSortFrozenOrder) {
       const orderIndex = new Map(dashboardSortFrozenOrder.map((id, index) => [id, index]));
@@ -747,10 +727,10 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     });
 
     return list;
-  }, [dashboardRows, dashboardSortDirection, dashboardSortField, dashboardSortFrozenOrder, visibleCrafts]);
+  }, [filteredDashboardRows, dashboardSortDirection, dashboardSortField, dashboardSortFrozenOrder, visibleCrafts]);
 
   const adjustedPriceById = useMemo(
-    () => buildAdjustedPriceById(visibleReagents, dashboardCraftingScaleById, version),
+    () => buildAdjustedPriceById(visibleReagents, dashboardCraftingScaleById),
     [visibleReagents, dashboardCraftingScaleById],
   );
 
@@ -763,6 +743,30 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     () => new Map(visibleReagents.map((entry) => [entry.itemId, entry])),
     [visibleReagents],
   );
+
+  useEffect(() => {
+    if (sortedDashboardRows.length === 0) {
+      if (selectedDashboardItemId !== null) {
+        setSelectedDashboardItemId(null);
+      }
+      return;
+    }
+
+    const selectionIsVisible = sortedDashboardRows.some((row) => row.itemId === selectedDashboardItemId);
+
+    if (!selectionIsVisible) {
+      setSelectedDashboardItemId(sortedDashboardRows[0].itemId);
+    }
+  }, [selectedDashboardItemId, sortedDashboardRows]);
+
+  const selectedDashboardRow = useMemo(
+    () => sortedDashboardRows.find((row) => row.itemId === selectedDashboardItemId) ?? null,
+    [selectedDashboardItemId, sortedDashboardRows],
+  );
+
+  const selectedDashboardCraft = selectedDashboardRow
+    ? effectiveCraftById.get(selectedDashboardRow.itemId) ?? null
+    : null;
 
   function renderRecipeChain(
     craftId: number,
@@ -858,6 +862,22 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                   <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
                 </div>
               ) : null}
+              {hasCraftChain && (
+                <div className="ml-9 mt-1 flex items-center gap-2">
+                  <span className="text-[11px] text-[#4a8a4a]">Usar preço de:</span>
+                  <Select
+                    value={reagent?.priceSource ?? "MATERIA_PRIMA"}
+                    onChange={(event) => updatePriceSource(component.itemId, event.target.value as PriceSource)}
+                    className="h-7 w-32 text-xs"
+                  >
+                    {SOURCE_OPTIONS.filter((opt) => opt.value !== "NPC").map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
               {reagent?.priceSource === "CRAFTING" ? (
                 <div className="ml-9 mt-1 flex items-center gap-2">
                   <span className="text-[11px] text-[#4a8a4a]">Tempo craft (seg):</span>
@@ -917,114 +937,36 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       }
 
       const base = data.item;
-      const targetReagents = importTarget === "global"
-        ? snapshot.reagents
-        : combineReagents(snapshot.reagents, personalSnapshot.reagents);
-      const persistedTargetReagents = importTarget === "global"
-        ? snapshot.reagents
-        : personalSnapshot.reagents;
-      const knownReagents = new Map(targetReagents.map((entry) => [entry.itemId, entry]));
-      const importedById = new Map<number, ReagentEntry>();
-      const visited = new Set<number>([base.itemId]);
-      let pendingItemIds = base.recipe.map((component) => component.itemId);
+      const knownReagents = new Set<number>([
+        ...snapshot.reagents.map((entry) => entry.itemId),
+        ...personalSnapshot.reagents.map((entry) => entry.itemId),
+      ]);
+      const missing = base.recipe.filter((row) => !knownReagents.has(row.itemId));
 
-      while (pendingItemIds.length > 0) {
-        const itemIds = Array.from(new Set(pendingItemIds)).filter((itemId) => !visited.has(itemId));
-        pendingItemIds = [];
-        itemIds.forEach((itemId) => visited.add(itemId));
+      let importedReagents: ReagentEntry[] = [];
 
-        const reagents = await Promise.all(
-          itemIds.map(async (itemId) => {
-            const existing = knownReagents.get(itemId);
-            if (existing && !existing.icon.includes("inv_misc_questionmark")) {
-                if (existing.recipe.length > 0 && existing.priceSource === "MATERIA_PRIMA") {
-                  const craftingReagent: ReagentEntry = { ...existing, priceSource: "CRAFTING" };
-                  knownReagents.set(itemId, craftingReagent);
-                  importedById.set(itemId, craftingReagent);
-                  return craftingReagent;
-                }
-
-                return existing;
-              }
-
+      if (missing.length > 0) {
+        const imported = await Promise.all(
+          missing.map(async (row) => {
             const reagentResponse = await fetch(
-              `/api/wow/reagent?version=${version}&itemId=${itemId}`,
+              `/api/wow/reagent?version=${version}&itemId=${row.itemId}`,
               { cache: "no-store" },
             );
-            const payload = (await reagentResponse.json()) as {
-              reagent?: ReagentEntry;
-              error?: string;
-            };
 
-            if (!reagentResponse.ok || !payload.reagent) {
-              throw new Error(payload.error ?? `Nao foi possivel importar o reagente ${itemId}.`);
+            if (!reagentResponse.ok) {
+              return null;
             }
 
-            importedById.set(itemId, payload.reagent);
-            knownReagents.set(itemId, payload.reagent);
-            return payload.reagent;
+            const payload = (await reagentResponse.json()) as {
+              reagent?: ReagentEntry;
+            };
+
+            return payload.reagent ?? null;
           }),
         );
 
-        pendingItemIds = reagents.flatMap((reagent) =>
-          reagent.recipe.map((component) => component.itemId),
-        );
+        importedReagents = imported.filter((entry): entry is ReagentEntry => Boolean(entry));
       }
-
-      const importedReagents = Array.from(importedById.values());
-      const reagentById = new Map(
-        [...targetReagents, ...importedReagents].map((reagent) => [reagent.itemId, reagent]),
-      );
-      base.recipe = base.recipe.map((component) => {
-        const reagent = reagentById.get(component.itemId);
-        return reagent
-          ? { ...component, name: reagent.name, icon: reagent.icon }
-          : component;
-      });
-
-      const auctionPriceById = new Map<number, number>();
-      if (version === "forever") {
-        const auctionItemIds = Array.from(new Set([
-          ...Array.from(visited).filter((itemId) => itemId !== base.itemId),
-          ...base.disenchant.map((entry) => entry.itemId),
-        ]));
-
-        if (auctionItemIds.length > 0) {
-          const priceResponse = await fetch(
-            `/api/auctionhouse/prices?version=forever&items=${auctionItemIds.join(",")}`,
-            { cache: "no-store" },
-          );
-          const priceData = (await priceResponse.json()) as TsmResponse;
-
-          if (!priceResponse.ok) {
-            throw new Error(priceData.error ?? "Falha ao buscar precos no AuctionHouse.fyi.");
-          }
-
-          for (const row of priceData.results ?? []) {
-            if (row.ok && row.price > 0 && typeof row.itemId === "number") {
-              auctionPriceById.set(row.itemId, row.price);
-            }
-          }
-        }
-      }
-
-      const reagentEntriesForImport = new Map<number, ReagentEntry>();
-      for (const reagent of persistedTargetReagents) {
-        if (visited.has(reagent.itemId)) {
-          reagentEntriesForImport.set(reagent.itemId, reagent);
-        }
-      }
-      for (const reagent of importedReagents) {
-        reagentEntriesForImport.set(reagent.itemId, reagent);
-      }
-      const pricedImportedReagents = Array.from(reagentEntriesForImport.values()).map((reagent) => ({
-        ...reagent,
-        ahPrice: auctionPriceById.get(reagent.itemId) ?? reagent.ahPrice,
-      }));
-      const trackedPriceEntries = toTrackedPriceEntries(base, version).map((reagent) => ({
-        ...reagent,
-        ahPrice: auctionPriceById.get(reagent.itemId) ?? reagent.ahPrice,
-      }));
 
       if (importTarget === "global") {
         const newCraft = { ...base, updatedAt: new Date().toISOString() };
@@ -1032,8 +974,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
         setSnapshot((prev) => {
           const uniqueReagents = mergePriceEntries(prev.reagents, [
-            ...pricedImportedReagents,
-            ...trackedPriceEntries,
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
           ]);
 
           const nextCrafts = [
@@ -1054,16 +996,16 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         void saveGlobalCraftToCloud(
           newCraft,
           [
-            ...pricedImportedReagents,
-            ...trackedPriceEntries,
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
           ],
           version,
         );
       } else {
         setPersonalSnapshot((prev) => {
           const uniqueReagents = mergePriceEntries(prev.reagents, [
-            ...pricedImportedReagents,
-            ...trackedPriceEntries,
+            ...importedReagents,
+            ...toTrackedPriceEntries(base, version),
           ]);
 
           const nextCrafts = [
@@ -1152,102 +1094,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
-  async function refreshAuctionHousePrices(silent: boolean) {
-    setSyncingPrices(true);
-
-    try {
-      // Collect all item IDs to fetch
-      const itemIds = Array.from(new Set([
-        ...snapshot.reagents.map((entry) => entry.itemId),
-        ...personalSnapshot.reagents.map((entry) => entry.itemId),
-      ]));
-
-      if (itemIds.length === 0) {
-        if (!silent) {
-          toast.error("Nao ha itens para atualizar.");
-        }
-        return;
-      }
-
-      const response = await fetch(`/api/auctionhouse/prices?version=forever&items=${itemIds.join(",")}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const data = (await response.json()) as TsmResponse;
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Falha ao atualizar precos do AuctionHouse.fyi.");
-      }
-
-      const byId = new Map<number, number>();
-
-      for (const row of data.results ?? []) {
-        if (!row.ok || row.price <= 0) {
-          continue;
-        }
-
-        if (typeof row.itemId === "number") {
-          byId.set(row.itemId, row.price);
-        }
-      }
-
-      setSnapshot((prev) => {
-        const updatedReagents = prev.reagents.map((entry) => {
-          const ahPrice = byId.get(entry.itemId) ?? entry.ahPrice;
-
-          return {
-            ...entry,
-            ahPrice,
-            updatedAt: new Date().toISOString(),
-          };
-        });
-
-        return {
-          ...prev,
-          reagents: applyCalculatedReagentPrices(updatedReagents, version),
-          lastTsmSyncAt: new Date().toISOString(),
-        };
-      });
-
-      setPersonalSnapshot((prev) => {
-        const updatedReagents = prev.reagents.map((entry) => {
-          const ahPrice = byId.get(entry.itemId) ?? entry.ahPrice;
-
-          return {
-            ...entry,
-            ahPrice,
-            updatedAt: new Date().toISOString(),
-          };
-        });
-
-        return {
-          ...prev,
-          reagents: applyCalculatedReagentPrices(updatedReagents, version),
-        };
-      });
-
-      if (!silent) {
-        toast.success("Precos atualizados via AuctionHouse.fyi.");
-      }
-
-      // Persist prices globally
-      void saveGlobalReagentPricesToCloud(
-        snapshot.reagents,
-        snapshot.crafts,
-        new Date().toISOString(),
-        version,
-      );
-    } catch (error) {
-      if (!silent) {
-        toast.error(error instanceof Error ? error.message : "Erro ao atualizar precos do AuctionHouse.fyi.");
-      }
-    } finally {
-      setSyncingPrices(false);
-    }
-  }
-
-  async function refreshPrices(options?: { silent?: boolean }) {
+  async function refreshTsmPrices(options?: { silent?: boolean }) {
     const silent = Boolean(options?.silent);
 
     if (syncingPrices) {
@@ -1258,12 +1105,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       if (!silent) {
         toast.error("Nao ha reagentes cadastrados para atualizar.");
       }
-      return;
-    }
-
-    // For WoW Forever, use AuctionHouse.fyi API
-    if (version === "forever") {
-      await refreshAuctionHousePrices(silent);
       return;
     }
 
@@ -1333,7 +1174,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
 
         return {
           ...prev,
-          reagents: applyCalculatedReagentPrices(updatedReagents, version),
+          reagents: applyCalculatedReagentPrices(updatedReagents),
           crafts: updatedCrafts,
           lastTsmSyncAt: new Date().toISOString(),
         };
@@ -1364,7 +1205,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
         return {
           ...prev,
           importedCrafts: updatedCrafts,
-          reagents: applyCalculatedReagentPrices(updatedReagents, version),
+          reagents: applyCalculatedReagentPrices(updatedReagents),
         };
       });
 
@@ -1647,11 +1488,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
       void deleteGlobalCraftFromCloud(itemId, version);
     }
 
-    setExpandedCraftIds((prev) => {
-      const next = { ...prev };
-      delete next[itemId];
-      return next;
-    });
+    setSelectedDashboardItemId((prev) => (prev === itemId ? null : prev));
 
     setDashboardCraftQtyById((prev) => {
       const next = { ...prev };
@@ -1697,6 +1534,228 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     toast.success(`${itemName} removido de Precos.`);
   }
 
+  function renderSelectedCraftPanel() {
+    if (!selectedDashboardRow || !selectedDashboardCraft) {
+      return (
+        <div className="rounded-2xl border border-dashed border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.45)] px-5 py-6 text-sm text-[#8fbd93]">
+          Selecione um item no dashboard para ver os detalhes completos de crafting, receita e disenchant.
+        </div>
+      );
+    }
+
+    const craft = selectedDashboardCraft;
+    const row = selectedDashboardRow;
+    const scenarioTotals = buildCraftScenarioTotals(craft, visibleReagents, dashboardCraftingScaleById);
+    const craftQty = Math.max(1, dashboardCraftQtyById[row.itemId] ?? 1);
+    const craftTimeSeconds = craft.craftTimeSeconds ?? 0;
+    const totalCraftTimeSeconds = buildTotalCraftTimeSeconds(craft, reagentById);
+    const simCraftTime = totalCraftTimeSeconds * craftQty;
+    const simCraftCost = scenarioTotals.base * craftQty;
+    const simAuctionRevenue = craft.auctionPrice * craftQty;
+    const simNpcRevenue = craft.vendorPrice * craftQty;
+    const simAuctionProfit = row.auctionProfit * craftQty;
+    const simDisenchantProfit = row.disenchantProfit * craftQty;
+    const simNpcProfit = row.npcProfit * craftQty;
+
+    return (
+      <div className="space-y-5 rounded-2xl border border-[rgba(69,190,95,0.24)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))] p-5 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-center gap-4">
+            <img src={row.icon} alt={row.name} className="h-16 w-16 rounded-xl border border-[rgba(69,190,95,0.28)]" />
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#a8ff9f]">Item Selecionado</p>
+              <h3 className="text-2xl font-semibold text-[#d4ffcc]">{row.name}</h3>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-[#b8e6b8]">
+                <span>{row.profession}</span>
+                <span className="text-[#4a8a4a]">•</span>
+                <span>ID {row.itemId}</span>
+                <Badge variant={row.bestOption === "AUCTION" ? "success" : row.bestOption === "DISENCHANT" ? "info" : "warning"}>
+                  {row.bestOption}
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Simulador de crafting</p>
+            <label className="text-xs text-[#b8e6b8]">Quantidade</label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={craftQty}
+              onChange={(event) => updateDashboardCraftQty(row.itemId, Number(event.target.value))}
+              className="h-10 w-28 rounded-md border border-[rgba(69,190,95,0.3)] bg-[rgba(3,8,4,0.7)] px-3 text-[#e8ffeb]"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo por craft (seg)</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                placeholder="ex: 2.5"
+                defaultValue={craftTimeSeconds > 0 ? craftTimeSeconds : ""}
+                key={`craft-time-${row.itemId}-${craftTimeSeconds}`}
+                onBlur={(event) => updateCraftItemTime(row.itemId, event.target.value)}
+                className="h-9 w-28 rounded-md border border-[rgba(69,190,95,0.3)] bg-[rgba(3,8,4,0.7)] px-3 text-sm text-[#e8ffeb] placeholder-[#3a6a3a]"
+              />
+              {craftTimeSeconds > 0 ? (
+                <span className="text-xs text-[#9eff8a]">{formatDurationSeconds(craftTimeSeconds)}</span>
+              ) : null}
+            </div>
+            <p className="text-[11px] text-[#3a6a3a]">0 = cast imediato | cooldown ex: 86400 = 1 dia</p>
+          </div>
+          {totalCraftTimeSeconds > craftTimeSeconds ? (
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo total crafting</p>
+              <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(totalCraftTimeSeconds)}</p>
+              <p className="text-[11px] text-[#4a8a4a]">inclui reagentes craftados</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-7">
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Custo total</p>
+            <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simCraftCost)}</p>
+          </div>
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Receita leilao</p>
+            <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simAuctionRevenue)}</p>
+          </div>
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Receita NPC</p>
+            <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simNpcRevenue)}</p>
+          </div>
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Lucro leilao</p>
+            <p className={`text-sm font-semibold ${simAuctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+              {formatSignedMoney(simAuctionProfit)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Lucro disenchant</p>
+            <p className={`text-sm font-semibold ${simDisenchantProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+              {formatSignedMoney(simDisenchantProfit)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Lucro NPC</p>
+            <p className={`text-sm font-semibold ${simNpcProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
+              {formatSignedMoney(simNpcProfit)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+            <p className="text-xs text-[#a8ff9f]">Tempo total</p>
+            <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(simCraftTime)}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+            <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
+            <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatMoney(scenarioTotals.base)}</p>
+          </div>
+          <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+            <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro leilao</p>
+            <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.auctionProfit)}</p>
+          </div>
+          <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+            <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro disenchant</p>
+            <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.disenchantProfit)}</p>
+          </div>
+          <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+            <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro NPC</p>
+            <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.npcProfit)}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-5 md:grid-cols-2">
+          <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#a8ff9f]">Receita</p>
+            <div className="space-y-3">
+              {craft.recipe.map((component) => renderRecipeChain(craft.itemId, component))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#b8e6b8]">Disenchant</p>
+            <div className="space-y-3">
+              {craft.disenchant.length === 0 ? (
+                <p className="text-sm text-[#4a8a4a]">Sem dados de disenchant.</p>
+              ) : (
+                craft.disenchant.map((entry) => (
+                  <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
+                    {(() => {
+                      const reagent = reagentById.get(entry.itemId);
+                      const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
+                      const currentScale = dashboardCraftingScaleById[entry.itemId] ?? 1;
+                      const adjustedUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
+
+                      return (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.2)]" />
+                            <span className="text-[#e8ffeb]">{entry.name}</span>
+                          </div>
+                          <p className="mt-1.5 text-xs text-[#b8e6b8]">
+                            Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max} | Preco: {formatMoney(adjustedUnit)}
+                            {isFixed ? " | Fixo" : ` | Ajuste: ${Math.round(currentScale * 100)}%`}
+                          </p>
+                          {!isFixed ? (
+                            <div className="mt-2 flex items-center gap-2">
+                              <input
+                                type="range"
+                                min={50}
+                                max={150}
+                                step={1}
+                                value={Math.round(currentScale * 100)}
+                                onMouseDown={freezeDashboardSortOrder}
+                                onTouchStart={freezeDashboardSortOrder}
+                                onPointerDown={freezeDashboardSortOrder}
+                                onPointerUp={unfreezeDashboardSortOrder}
+                                onPointerCancel={unfreezeDashboardSortOrder}
+                                onBlur={unfreezeDashboardSortOrder}
+                                onChange={(event) => updateDashboardReagentScale(entry.itemId, Number(event.target.value) / 100)}
+                                className="w-36 accent-[#9eff8a]"
+                              />
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={getDashboardPriceInputValue(entry.itemId, adjustedUnit)}
+                                onChange={(event: ChangeEvent<HTMLInputElement>) => updateDashboardPriceDraft(entry.itemId, event.target.value)}
+                                onBlur={(event) => commitDashboardPriceDraft(entry.itemId, adjustedUnit, event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
+                                aria-label={`Preco ajustado de ${entry.name}`}
+                              />
+                              <span className="text-[11px] text-[#b8e6b8]">{getDashboardPricePreview(entry.itemId, adjustedUnit)}</span>
+                              <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-7">
       <Card className="overflow-hidden">
@@ -1738,53 +1797,38 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             <p className="text-sm text-[#b8e6b8]">Gestao de reagentes com fontes de custo, valor fixo e rastreio por item.</p>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
-            {version !== "forever" && (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button onClick={() => void refreshPrices()} disabled={syncingPrices} className="h-11">
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
-                  </Button>
-                  <label className="cursor-pointer rounded-xl border border-[rgba(69,190,95,0.28)] bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-[#e8ffeb] shadow-[0_0_0_1px_rgba(34,197,94,0.18)_inset] hover:border-[rgba(158,255,138,0.4)]">
-                    Enviar AppData.lua desta versao
-                    <input
-                      type="file"
-                      accept=".lua,text/plain"
-                      className="hidden"
-                      onChange={onSelectTsmAppData}
-                    />
-                  </label>
-                  <Button
-                    onClick={useAutomaticTsmAppData}
-                    variant="secondary"
-                    className="h-11"
-                    disabled={!appDataFileName && !appDataContent.trim()}
-                  >
-                    Usar AppData local automatico
-                  </Button>
-                  <Badge variant="info" className="h-8">
-                    Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
-                  </Badge>
-                </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={() => void refreshTsmPrices()} disabled={syncingPrices} className="h-11">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
+              </Button>
+              <label className="cursor-pointer rounded-xl border border-[rgba(69,190,95,0.28)] bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-[#e8ffeb] shadow-[0_0_0_1px_rgba(34,197,94,0.18)_inset] hover:border-[rgba(158,255,138,0.4)]">
+                Enviar AppData.lua desta versao
+                <input
+                  type="file"
+                  accept=".lua,text/plain"
+                  className="hidden"
+                  onChange={onSelectTsmAppData}
+                />
+              </label>
+              <Button
+                onClick={useAutomaticTsmAppData}
+                variant="secondary"
+                className="h-11"
+                disabled={!appDataFileName && !appDataContent.trim()}
+              >
+                Usar AppData local automatico
+              </Button>
+              <Badge variant="info" className="h-8">
+                Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
+              </Badge>
+            </div>
 
-                <p className="text-sm text-[#4a8a4a]">
-                  {appDataFileName
-                    ? `Arquivo ativo nesta versao: ${appDataFileName}`
-                    : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
-                </p>
-              </>
-            )}
-            {version === "forever" && (
-              <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={() => void refreshPrices()} disabled={syncingPrices} className="h-11">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  {syncingPrices ? "Atualizando..." : "Atualizar precos via AuctionHouse.fyi"}
-                </Button>
-                <Badge variant="info" className="h-8">
-                  Ultima atualizacao: {formatDateTime(snapshot.lastTsmSyncAt)}
-                </Badge>
-              </div>
-            )}
+            <p className="text-sm text-[#4a8a4a]">
+              {appDataFileName
+                ? `Arquivo ativo nesta versao: ${appDataFileName}`
+                : "Sem AppData.lua manual: sera usado o caminho padrao do servidor."}
+            </p>
 
             <div className="space-y-3 rounded-2xl border border-[rgba(69,190,95,0.25)] bg-[linear-gradient(180deg,rgba(10,40,15,0.5),rgba(3,8,4,0.7))] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
               <p className="text-base font-semibold text-[#e8ffeb]">Adicionar Reagente Manual</p>
@@ -1823,8 +1867,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                     <th className="px-4 py-3 text-left">Qualidade</th>
                     <th className="px-4 py-3 text-left">Fonte</th>
                     <th className="px-4 py-3 text-left">Origem</th>
-                    {version !== "forever" && <th className="px-4 py-3 text-left">Preco TSM</th>}
-                    {version === "forever" && <th className="px-4 py-3 text-left">Preco Leilao</th>}
+                    <th className="px-4 py-3 text-left">Preco TSM</th>
                     <th className="px-4 py-3 text-left">Preco Calculado</th>
                     <th className="px-4 py-3 text-left">Valor Fixado</th>
                     <th className="px-4 py-3 text-left">Acao</th>
@@ -1857,16 +1900,7 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                         </Select>
                       </td>
                       <td className="max-w-sm px-4 py-4 text-[#b8e6b8]">{entry.source}</td>
-                      {version !== "forever" && <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(entry.tsmPrice)}</td>}
-                      {version === "forever" && (
-                        <td className="px-4 py-4 font-medium">
-                          {entry.ahPrice > 0 ? (
-                            <span className="font-semibold text-[#ffd700]">{formatMoney(entry.ahPrice)}</span>
-                          ) : (
-                            <span className="text-[#3a6a3a]">-</span>
-                          )}
-                        </td>
-                      )}
+                      <td className="px-4 py-4 font-medium text-[#b8e6b8]">{formatMoney(entry.tsmPrice)}</td>
                       <td className="px-4 py-4">
                         {entry.calculatedPrice === null ? (
                           <span className="text-[#3a6a3a]">-</span>
@@ -1999,36 +2033,51 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
             </div>
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Ordenar por</span>
-              <Select
-                value={dashboardSortField}
-                onChange={(event) => setDashboardSortField(event.target.value as DashboardSortField)}
-                className="h-10 min-w-[220px]"
-              >
-                <option value="auctionProfit">Lucro Leilao</option>
-                <option value="disenchantProfit">Lucro Disenchant</option>
-                <option value="npcProfit">Lucro NPC</option>
-                <option value="craftCost">Custo Craft</option>
-                <option value="auctionPrice">Venda Leilao</option>
-                <option value="vendorPrice">Venda NPC</option>
-                <option value="craftTime">Tempo Craft</option>
-                <option value="name">Nome</option>
-              </Select>
-              <Button
-                type="button"
-                variant="secondary"
-                className="h-10"
-                onClick={() => setDashboardSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}
-              >
-                {dashboardSortDirection === "asc" ? "Crescente" : "Decrescente"}
-              </Button>
+            {renderSelectedCraftPanel()}
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Ordenar por</span>
+                <Select
+                  value={dashboardSortField}
+                  onChange={(event) => setDashboardSortField(event.target.value as DashboardSortField)}
+                  className="h-10 min-w-[220px]"
+                >
+                  <option value="auctionProfit">Lucro Leilao</option>
+                  <option value="disenchantProfit">Lucro Disenchant</option>
+                  <option value="npcProfit">Lucro NPC</option>
+                  <option value="craftCost">Custo Craft</option>
+                  <option value="auctionPrice">Venda Leilao</option>
+                  <option value="vendorPrice">Venda NPC</option>
+                  <option value="craftTime">Tempo Craft</option>
+                  <option value="name">Nome</option>
+                </Select>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10"
+                  onClick={() => setDashboardSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}
+                >
+                  {dashboardSortDirection === "asc" ? "Crescente" : "Decrescente"}
+                </Button>
+              </div>
+              <div className="relative w-full xl:max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[#d4ffcc]/55" />
+                <Input
+                  className="pl-10"
+                  value={dashboardQuery}
+                  onChange={(event) => setDashboardQuery(event.target.value)}
+                  placeholder="Pesquisar item, profissao ou item ID"
+                />
+              </div>
+            </div>
+            <div className="rounded-xl border border-[rgba(69,190,95,0.25)] bg-[rgba(120,220,140,0.08)] px-4 py-3 text-xs text-[#bff3b9]">
+              Lucros de Leilao e Disenchant ja consideram a taxa da AH (5%) no calculo final.
             </div>
             <div className="overflow-x-auto rounded-2xl border border-[rgba(69,190,95,0.22)] bg-[rgba(3,8,4,0.55)]">
               <table className="w-full min-w-[1180px] text-sm">
                 <thead className="bg-[linear-gradient(180deg,rgba(20,60,25,0.98),rgba(3,8,4,0.99))] text-xs uppercase tracking-[0.11em] text-[#a8ff9f]/90">
                   <tr>
-                    <th className="px-4 py-3 text-left"></th>
+                    <th className="px-4 py-3 text-left">Selecao</th>
                     <th className="px-4 py-3 text-left">Item</th>
                     <th className="px-4 py-3 text-left">Profissao</th>
                     <th className="px-4 py-3 text-left">Tempo Craft</th>
@@ -2044,43 +2093,24 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                 </thead>
                 <tbody>
                   {sortedDashboardRows.map((row) => {
-                    const expanded = Boolean(expandedCraftIds[row.itemId]);
                     const craft = effectiveCraftById.get(row.itemId);
-                    const scenarioTotals = craft
-                      ? buildCraftScenarioTotals(craft, visibleReagents, dashboardCraftingScaleById)
-                      : { base: 0 };
-                    const disenchantValue = craft ? buildExpectedDisenchantValue(craft, adjustedPriceById) : 0;
-                    const craftQty = Math.max(1, dashboardCraftQtyById[row.itemId] ?? 1);
                     const craftTimeSeconds = craft?.craftTimeSeconds ?? 0;
-                    const totalCraftTimeSeconds = craft ? buildTotalCraftTimeSeconds(craft, reagentById) : 0;
-                    const simCraftTime = totalCraftTimeSeconds * craftQty;
-                    const simCraftCost = scenarioTotals.base * craftQty;
-                    const simAuctionRevenue = (craft?.auctionPrice ?? 0) * craftQty;
-                    const simNpcRevenue = (craft?.vendorPrice ?? 0) * craftQty;
-                    const simAuctionProfit = (row.auctionProfit ?? 0) * craftQty;
-                    const simDisenchantProfit = (row.disenchantProfit ?? 0) * craftQty;
-                    const simNpcProfit = (row.npcProfit ?? 0) * craftQty;
                     const auctionProfitPercent = row.craftCost > 0 ? (row.auctionProfit / row.craftCost) * 100 : 0;
                     const disenchantProfitPercent = row.craftCost > 0 ? (row.disenchantProfit / row.craftCost) * 100 : 0;
                     const npcProfitPercent = row.craftCost > 0 ? (row.npcProfit / row.craftCost) * 100 : 0;
+                    const isSelected = row.itemId === selectedDashboardItemId;
 
                     return (
-                      <>
-                        <tr key={row.itemId} className="border-t border-[rgba(69,190,95,0.2)] transition-colors hover:bg-[rgba(120,220,140,0.06)]">
+                      <tr key={row.itemId} className={`border-t border-[rgba(69,190,95,0.2)] transition-colors hover:bg-[rgba(120,220,140,0.06)] ${isSelected ? "bg-[rgba(120,220,140,0.08)]" : ""}`}>
                           <td className="px-4 py-4">
                             <Button
                               type="button"
-                              size="icon"
-                              variant="secondary"
-                              onClick={() =>
-                                setExpandedCraftIds((prev) => ({
-                                  ...prev,
-                                  [row.itemId]: !expanded,
-                                }))
-                              }
-                              className="h-9 w-9"
+                              size="sm"
+                              variant={isSelected ? "default" : "secondary"}
+                              onClick={() => setSelectedDashboardItemId(row.itemId)}
+                              className="min-w-28"
                             >
-                              {expanded ? <ArrowDown className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                              {isSelected ? "Selecionado" : "Selecionar"}
                             </Button>
                           </td>
                           <td className="px-4 py-4">
@@ -2143,194 +2173,6 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
                             </div>
                           </td>
                         </tr>
-                        {expanded && craft ? (
-                          <tr key={`expanded-${row.itemId}`} className="border-t border-[rgba(69,190,95,0.2)] bg-[linear-gradient(180deg,rgba(4,12,16,0.88),rgba(4,9,14,0.92))]">
-                            <td colSpan={12} className="px-6 py-6">
-                              <div className="mb-5 rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                <div className="mb-3 flex flex-wrap items-end gap-3">
-                                  <div className="space-y-1">
-                                    <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo por craft (seg)</p>
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step={0.1}
-                                        placeholder="ex: 2.5"
-                                        defaultValue={craftTimeSeconds > 0 ? craftTimeSeconds : ""}
-                                        key={`craft-time-${row.itemId}-${craftTimeSeconds}`}
-                                        onBlur={(event) => updateCraftItemTime(row.itemId, event.target.value)}
-                                        className="h-9 w-28 rounded-md border border-[rgba(69,190,95,0.3)] bg-[rgba(3,8,4,0.7)] px-3 text-sm text-[#e8ffeb] placeholder-[#3a6a3a]"
-                                      />
-                                      {craftTimeSeconds > 0 ? (
-                                        <span className="text-xs text-[#9eff8a]">{formatDurationSeconds(craftTimeSeconds)}</span>
-                                      ) : null}
-                                    </div>
-                                    <p className="text-[11px] text-[#3a6a3a]">0 = cast imediato | cooldown ex: 86400 = 1 dia</p>
-                                  </div>
-                                  {totalCraftTimeSeconds > craftTimeSeconds ? (
-                                    <div className="space-y-1">
-                                      <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Tempo total crafting</p>
-                                      <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(totalCraftTimeSeconds)}</p>
-                                      <p className="text-[11px] text-[#4a8a4a]">inclui reagentes craftados</p>
-                                    </div>
-                                  ) : null}
-                                  <div className="space-y-1">
-                                    <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Simulador de crafting</p>
-                                    <label className="text-xs text-[#b8e6b8]">Quantidade</label>
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      step={1}
-                                      value={craftQty}
-                                      onChange={(event) => updateDashboardCraftQty(row.itemId, Number(event.target.value))}
-                                      className="h-10 w-28 rounded-md border border-[rgba(69,190,95,0.3)] bg-[rgba(3,8,4,0.7)] px-3 text-[#e8ffeb]"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="grid gap-3 md:grid-cols-7">
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Custo total</p>
-                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simCraftCost)}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Receita leilao</p>
-                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simAuctionRevenue)}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Receita NPC</p>
-                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatMoney(simNpcRevenue)}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Lucro leilao</p>
-                                    <p className={`text-sm font-semibold ${simAuctionProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
-                                      {formatSignedMoney(simAuctionProfit)}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Lucro disenchant</p>
-                                    <p className={`text-sm font-semibold ${simDisenchantProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
-                                      {formatSignedMoney(simDisenchantProfit)}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Lucro NPC</p>
-                                    <p className={`text-sm font-semibold ${simNpcProfit >= 0 ? "text-[#9eff8a]" : "text-[#ff9999]"}`}>
-                                      {formatSignedMoney(simNpcProfit)}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                    <p className="text-xs text-[#a8ff9f]">Tempo total</p>
-                                    <p className="text-sm font-semibold text-[#e8ffeb]">{formatDurationSeconds(simCraftTime)}</p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mb-5 grid gap-3 md:grid-cols-4">
-                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Custo craft</p>
-                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatMoney(scenarioTotals.base)}</p>
-                                </div>
-                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro leilão</p>
-                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(craft.auctionPrice - scenarioTotals.base)}</p>
-                                </div>
-                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro disenchant</p>
-                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.disenchantProfit)}</p>
-                                </div>
-                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="text-xs uppercase tracking-[0.12em] text-[#a8ff9f]">Lucro NPC</p>
-                                  <p className="mt-2 text-sm text-[#e8ffeb]">Base: {formatSignedMoney(row.npcProfit)}</p>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-5 md:grid-cols-2">
-                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#a8ff9f]">Receita</p>
-                                  <div className="space-y-3">
-                                    {craft.recipe.map((component) => renderRecipeChain(craft.itemId, component))}
-                                  </div>
-                                </div>
-                                <div className="rounded-2xl border border-[rgba(69,190,95,0.2)] bg-[rgba(3,8,4,0.55)] p-4 shadow-[0_0_0_1px_rgba(34,197,94,0.12)_inset]">
-                                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-[#b8e6b8]">
-                                    Disenchant
-                                    {craft.disenchantEstimated ? (
-                                      <span className="ml-2 normal-case text-[#f4c76b]">Estimativa pelas regras clássicas</span>
-                                    ) : null}
-                                  </p>
-                                  <div className="space-y-3">
-                                    {craft.disenchant.length === 0 ? (
-                                      <p className="text-sm text-[#4a8a4a]">Sem dados de disenchant.</p>
-                                    ) : (
-                                      craft.disenchant.map((entry) => (
-                                        <div key={`${craft.itemId}-${entry.itemId}`} className="rounded-xl border border-[rgba(69,190,95,0.2)] bg-[rgba(120,220,140,0.06)] p-3">
-                                          {(() => {
-                                            const reagent = reagentById.get(entry.itemId);
-                                            const isFixed = Boolean(reagent?.fixedPrice && reagent.fixedPrice > 0);
-                                            const currentScale = dashboardCraftingScaleById[entry.itemId] ?? 1;
-                                            const adjustedUnit = getAdjustedBasePrice(reagent, dashboardCraftingScaleById);
-
-                                            return (
-                                              <>
-                                                <div className="flex items-center gap-3">
-                                                  <img src={entry.icon} alt={entry.name} className="h-8 w-8 rounded-md border border-[rgba(69,190,95,0.2)]" />
-                                                  <span className="text-[#e8ffeb]">{entry.name}</span>
-                                                </div>
-                                                <p className="mt-1.5 text-xs text-[#b8e6b8]">
-                                                  Chance: {(entry.chance * 100).toFixed(2)}% | Quantidade: {entry.min} - {entry.max} | Preco: {formatMoney(adjustedUnit)}
-                                                  {isFixed ? " | Fixo" : ` | Ajuste: ${Math.round(currentScale * 100)}%`}
-                                                </p>
-                                                {!isFixed ? (
-                                                  <div className="mt-2 flex items-center gap-2">
-                                                    <input
-                                                      type="range"
-                                                      min={50}
-                                                      max={150}
-                                                      step={1}
-                                                      value={Math.round(currentScale * 100)}
-                                                      onMouseDown={freezeDashboardSortOrder}
-                                                      onTouchStart={freezeDashboardSortOrder}
-                                                      onPointerDown={freezeDashboardSortOrder}
-                                                      onPointerUp={unfreezeDashboardSortOrder}
-                                                      onPointerCancel={unfreezeDashboardSortOrder}
-                                                      onBlur={unfreezeDashboardSortOrder}
-                                                      onChange={(event) => updateDashboardReagentScale(entry.itemId, Number(event.target.value) / 100)}
-                                                      className="w-36 accent-[#9eff8a]"
-                                                    />
-                                                    <input
-                                                      type="number"
-                                                      min={0}
-                                                      step={1}
-                                                      value={getDashboardPriceInputValue(entry.itemId, adjustedUnit)}
-                                                      onChange={(event: ChangeEvent<HTMLInputElement>) => updateDashboardPriceDraft(entry.itemId, event.target.value)}
-                                                      onBlur={(event) => commitDashboardPriceDraft(entry.itemId, adjustedUnit, event.target.value)}
-                                                      onKeyDown={(event) => {
-                                                        if (event.key === "Enter") {
-                                                          event.preventDefault();
-                                                          event.currentTarget.blur();
-                                                        }
-                                                      }}
-                                                      className="h-7 w-24 rounded border border-[rgba(69,190,95,0.25)] bg-[rgba(3,8,4,0.7)] px-2 text-xs text-[#e8ffeb]"
-                                                      aria-label={`Preco ajustado de ${entry.name}`}
-                                                    />
-                                                    <span className="text-[11px] text-[#b8e6b8]">{getDashboardPricePreview(entry.itemId, adjustedUnit)}</span>
-                                                    <span className="text-[11px] text-[#a8ff9f]">{Math.round(currentScale * 100)}%</span>
-                                                  </div>
-                                                ) : null}
-                                              </>
-                                            );
-                                          })()}
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : null}
-                      </>
                     );
                   })}
                   {sortedDashboardRows.length === 0 ? (

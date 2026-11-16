@@ -5,7 +5,6 @@ import type {
   ReagentEntry,
   RecipeComponent,
 } from "@/lib/modules/types";
-import type { WowVersion } from "@/lib/wow/versions";
 
 const AUCTION_FEE_TBC = 0.05;
 
@@ -25,7 +24,7 @@ function expectedDisenchantValue(item: ImportedCraftItem, priceById: Map<number,
   }, 0);
 }
 
-function buildRecipeCostResolver(reagents: ReagentEntry[], version?: WowVersion) {
+function buildRecipeCostResolver(reagents: ReagentEntry[]) {
   const byId = new Map<number, ReagentEntry>(reagents.map((entry) => [entry.itemId, entry]));
   const memo = new Map<number, number>();
 
@@ -34,11 +33,6 @@ function buildRecipeCostResolver(reagents: ReagentEntry[], version?: WowVersion)
     reagent: ReagentEntry,
     visited: Set<number>,
   ): number {
-    // For WoW Forever, prefer AH prices over TSM
-    if (version === "forever" && reagent.ahPrice > 0) {
-      return reagent.ahPrice;
-    }
-
     if (source === "NPC") {
       const fixed = sanitizePrice(reagent.fixedPrice);
       return fixed > 0 ? fixed : sanitizePrice(reagent.tsmPrice);
@@ -97,18 +91,11 @@ function buildRecipeCostResolver(reagents: ReagentEntry[], version?: WowVersion)
   return resolveCost;
 }
 
-export function applyCalculatedReagentPrices(reagents: ReagentEntry[], version?: WowVersion): ReagentEntry[] {
-  const resolveCost = buildRecipeCostResolver(reagents, version);
+export function applyCalculatedReagentPrices(reagents: ReagentEntry[]): ReagentEntry[] {
+  const resolveCost = buildRecipeCostResolver(reagents);
 
   return reagents.map((entry) => {
     if (entry.priceSource === "MATERIA_PRIMA") {
-      // For WoW Forever, use ahPrice when available for materia prima items
-      if (version === "forever" && entry.ahPrice > 0) {
-        return {
-          ...entry,
-          calculatedPrice: entry.ahPrice,
-        };
-      }
       return {
         ...entry,
         calculatedPrice: null,
@@ -127,18 +114,12 @@ export function applyCalculatedReagentPrices(reagents: ReagentEntry[], version?:
 export function computeDashboardRows(
   crafts: ImportedCraftItem[],
   reagents: ReagentEntry[],
-  version?: WowVersion,
 ): DashboardRow[] {
-  const resolvedReagents = applyCalculatedReagentPrices(reagents, version);
+  const resolvedReagents = applyCalculatedReagentPrices(reagents);
   const priceById = new Map<number, number>();
 
   for (const reagent of resolvedReagents) {
-    // For WoW Forever, prefer AH prices
-    if (version === "forever" && reagent.ahPrice > 0) {
-      priceById.set(reagent.itemId, reagent.ahPrice);
-    } else {
-      priceById.set(reagent.itemId, reagent.calculatedPrice ?? reagent.tsmPrice);
-    }
+    priceById.set(reagent.itemId, reagent.calculatedPrice ?? reagent.tsmPrice);
   }
 
   return crafts.map((craft) => {
