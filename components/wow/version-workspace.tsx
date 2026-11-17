@@ -40,8 +40,8 @@ const TABS = ["dashboard", "import", "reagents"] as const;
 
 type TabId = (typeof TABS)[number];
 
-type TsmResponse = {
-  results?: Array<{ name: string; itemId: number | null; price: number; ok: boolean }>;
+type PriceLookupResponse = {
+  results?: Array<{ name?: string; itemId?: number | null; price: number; ok: boolean }>;
   error?: string;
 };
 
@@ -64,7 +64,7 @@ const SOURCE_OPTIONS: Array<{ value: PriceSource; label: string }> = [
   { value: "NPC", label: "NPC" },
 ];
 
-const AUTO_TSM_REFRESH_MS = 1 * 60 * 1000;
+const AUTO_PRICE_REFRESH_MS = 1 * 60 * 1000;
 
 function combineReagents(base: ReagentEntry[], overlay: ReagentEntry[]): ReagentEntry[] {
   const byId = new Map<number, ReagentEntry>();
@@ -597,8 +597,8 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
 
     const intervalId = window.setInterval(() => {
-      void refreshTsmPrices({ silent: true });
-    }, AUTO_TSM_REFRESH_MS);
+      void refreshMarketPrices({ silent: true });
+    }, AUTO_PRICE_REFRESH_MS);
 
     return () => {
       window.clearInterval(intervalId);
@@ -1099,16 +1099,18 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     }
   }
 
-  async function refreshTsmPrices(options?: { silent?: boolean }) {
+  async function refreshMarketPrices(options?: { silent?: boolean }) {
     const silent = Boolean(options?.silent);
 
     if (syncingPrices) {
       return;
     }
 
-    if (snapshot.reagents.length === 0) {
+    const reagents = [...snapshot.reagents, ...personalSnapshot.reagents];
+    const crafts = [...snapshot.crafts, ...personalSnapshot.importedCrafts];
+    if (reagents.length === 0 && crafts.length === 0) {
       if (!silent) {
-        toast.error("Nao ha reagentes cadastrados para atualizar.");
+        toast.error("Nao ha itens cadastrados para atualizar.");
       }
       return;
     }
@@ -1116,25 +1118,31 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
     setSyncingPrices(true);
 
     try {
-      const names = Array.from(new Set([
-        ...snapshot.reagents.map((entry) => entry.name),
-        ...personalSnapshot.reagents.map((entry) => entry.name),
+      const isForever = version === "forever";
+      const names = Array.from(new Set(reagents.map((entry) => entry.name)));
+      const itemIds = Array.from(new Set([
+        ...reagents.map((entry) => entry.itemId),
+        ...crafts.map((entry) => entry.itemId),
       ]));
+      const response = isForever
+        ? await fetch(
+            `/api/auctionhouse/prices?version=forever&items=${itemIds.join(",")}`,
+            { cache: "no-store" },
+          )
+        : await fetch(version === "retail" ? "/tsm-bulk" : "/tsm-local", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              version === "retail"
+                ? { names }
+                : {
+                    names,
+                    appDataContent: appDataContent.trim() ? appDataContent : undefined,
+                  },
+            ),
+          });
 
-      const response = await fetch(version === "retail" ? "/tsm-bulk" : "/tsm-local", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          version === "retail"
-            ? { names }
-            : {
-                names,
-                appDataContent: appDataContent.trim() ? appDataContent : undefined,
-              },
-        ),
-      });
-
-      const data = (await response.json()) as TsmResponse;
+      const data = (await response.json()) as PriceLookupResponse;
 
       if (!response.ok) {
         throw new Error(data.error ?? "Falha ao atualizar precos.");
@@ -1148,81 +1156,70 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
           continue;
         }
 
-        byName.set(row.name.trim().toLowerCase(), row.price);
+        if (row.name?.trim()) {
+          byName.set(row.name.trim().toLowerCase(), row.price);
+        }
 
         if (typeof row.itemId === "number") {
           byId.set(row.itemId, row.price);
         }
       }
 
-      setSnapshot((prev) => {
-        const updatedReagents = prev.reagents.map((entry) => {
-          const byItemId = byId.get(entry.itemId);
-          const byLowerName = byName.get(entry.name.trim().toLowerCase());
-          const tsmPrice = byItemId ?? byLowerName ?? entry.tsmPrice;
+      const syncedAt = new Date().toISOString();
+      const updateReagentPrices = (entries: ReagentEntry[]) =>
+        applyCalculatedReagentPrices(entries.map((entry) => {
+          const marketPrice = byId.get(entry.itemId) ?? byName.get(entry.name.trim().toLowerCase());
+          if (marketPrice === undefined) {
+            return entry;
+          }
 
           return {
             ...entry,
-            tsmPrice,
-            updatedAt: new Date().toISOString(),
+            tsmPrice: marketPrice,
+            ...(isForever ? { ahPrice: marketPrice } : {}),
+            updatedAt: syncedAt,
           };
+        }));
+      const updateCraftPrices = (entries: ImportedCraftItem[]) =>
+        entries.map((craft) => {
+          const price = byId.get(craft.itemId) ?? byName.get(craft.name.trim().toLowerCase());
+          if (price === undefined || price === craft.auctionPrice) {
+            return craft;
+          }
+
+          return { ...craft, auctionPrice: price, updatedAt: syncedAt };
         });
 
-        const updatedCrafts = prev.crafts.map((craft) => {
-          const price = byId.get(craft.itemId) ?? byName.get(craft.name.trim().toLowerCase()) ?? craft.auctionPrice;
-          return {
-            ...craft,
-            auctionPrice: price,
-            updatedAt: new Date().toISOString(),
-          };
-        });
-
+      setSnapshot((prev) => {
         return {
           ...prev,
-          reagents: applyCalculatedReagentPrices(updatedReagents),
-          crafts: updatedCrafts,
-          lastTsmSyncAt: new Date().toISOString(),
+          reagents: updateReagentPrices(prev.reagents),
+          crafts: updateCraftPrices(prev.crafts),
+          lastTsmSyncAt: syncedAt,
         };
       });
 
       setPersonalSnapshot((prev) => {
-        const updatedReagents = prev.reagents.map((entry) => {
-          const byItemId = byId.get(entry.itemId);
-          const byLowerName = byName.get(entry.name.trim().toLowerCase());
-          const tsmPrice = byItemId ?? byLowerName ?? entry.tsmPrice;
-
-          return {
-            ...entry,
-            tsmPrice,
-            updatedAt: new Date().toISOString(),
-          };
-        });
-
-        const updatedCrafts = prev.importedCrafts.map((craft) => {
-          const price = byId.get(craft.itemId) ?? byName.get(craft.name.trim().toLowerCase()) ?? craft.auctionPrice;
-          return {
-            ...craft,
-            auctionPrice: price,
-            updatedAt: new Date().toISOString(),
-          };
-        });
-
         return {
           ...prev,
-          importedCrafts: updatedCrafts,
-          reagents: applyCalculatedReagentPrices(updatedReagents),
+          importedCrafts: updateCraftPrices(prev.importedCrafts),
+          reagents: updateReagentPrices(prev.reagents),
         };
       });
 
       if (!silent) {
-        toast.success(version === "retail" ? "Precos atualizados pela Blizzard." : "Precos atualizados via TSM.");
+        toast.success(isForever
+          ? "Precos atualizados via AuctionHouse.fyi."
+          : version === "retail"
+            ? "Precos atualizados pela Blizzard."
+            : "Precos atualizados via TSM.");
       }
 
       // Persist prices globally so all users see updated values
       void saveGlobalReagentPricesToCloud(
-        snapshot.reagents,
-        snapshot.crafts,
-        new Date().toISOString(),
+        updateReagentPrices(snapshot.reagents),
+        updateCraftPrices(snapshot.crafts),
+        syncedAt,
         version,
       );
     } catch (error) {
@@ -1803,9 +1800,13 @@ export function WowVersionWorkspace({ version }: { version: WowVersion }) {
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={() => void refreshTsmPrices()} disabled={syncingPrices} className="h-11">
+              <Button onClick={() => void refreshMarketPrices()} disabled={syncingPrices} className="h-11">
                 <RefreshCw className="mr-2 h-4 w-4" />
-                {syncingPrices ? "Atualizando..." : "Atualizar precos via TSM"}
+                {syncingPrices
+                  ? "Atualizando..."
+                  : version === "forever"
+                    ? "Atualizar precos via AuctionHouse.fyi"
+                    : "Atualizar precos via TSM"}
               </Button>
               <label className="cursor-pointer rounded-xl border border-[rgba(69,190,95,0.28)] bg-[linear-gradient(180deg,rgba(9,18,21,0.95),rgba(4,10,16,0.96))] px-4 py-2.5 text-sm font-medium text-[#e8ffeb] shadow-[0_0_0_1px_rgba(34,197,94,0.18)_inset] hover:border-[rgba(158,255,138,0.4)]">
                 Enviar AppData.lua desta versao
