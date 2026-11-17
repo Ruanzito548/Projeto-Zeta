@@ -9,6 +9,7 @@ import { startImport, runSlice, type EngineDeps } from "../../lib/import/engine"
 import { MemoryImportStore } from "../../lib/import/store";
 import { WfSource } from "../../lib/import/wf-source";
 import { computeDashboardRows } from "../../lib/modules/pricing-engine";
+import { fetchItemPricesFromAuctionHouse } from "../../lib/modules/auctionhouse-service";
 import type { ItemDoc, RecipeDoc } from "../../lib/import/types";
 import { FakeWf } from "./fakes";
 
@@ -17,6 +18,43 @@ const noSleep = async () => undefined;
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" }, ...init });
 }
+
+describe("AuctionHouse.fyi: preço de item", () => {
+  it("usa o preço e a quantidade observados no mercado", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      jsonResponse({ row: [125, 50, 1_790_683_200_000] })) as typeof fetch;
+
+    try {
+      const [price] = await fetchItemPricesFromAuctionHouse([2589]);
+      assert.deepEqual(price, {
+        itemId: 2589,
+        price: 125,
+        quantity: 50,
+        lastUpdated: 1_790_683_200_000,
+        ok: true,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("considera preço null como indisponível, sem transformá-lo em zero disponível", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      jsonResponse({ row: [null, null, 1_790_683_200_000] })) as typeof fetch;
+
+    try {
+      const [price] = await fetchItemPricesFromAuctionHouse([2589]);
+      assert.equal(price.ok, false);
+      assert.equal(price.price, 0);
+      assert.equal(price.quantity, null);
+      assert.equal(price.lastUpdated, 1_790_683_200_000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
 
 describe("HTTP: retry, backoff, 429 e timeout", () => {
   it("repete após 429 respeitando Retry-After e depois tem sucesso", async () => {

@@ -5,7 +5,7 @@ export type AhMarket = "forever.normal.horde.us" | "forever.normal.alliance.us" 
 export interface AhPriceResponse {
   market: string;
   item: number;
-  row: [price: number, quantity: number, at: number] | null;
+  row: [price: number | null, quantity: number | null, at: number] | null;
   days: Array<[price: number, quantity: number, at: number]>;
   volume: number[];
   now: number;
@@ -68,12 +68,12 @@ async function fetchSingleItemPrice(
 
   const data = (await response.json()) as AhPriceResponse;
 
-  if (!data.row) {
+  if (!data.row || data.row[0] === null) {
     return {
       itemId,
       price: 0,
-      quantity: null,
-      lastUpdated: Date.now(),
+      quantity: data.row?.[1] ?? null,
+      lastUpdated: data.row?.[2] ?? Date.now(),
       ok: false,
     };
   }
@@ -82,8 +82,8 @@ async function fetchSingleItemPrice(
 
   return {
     itemId,
-    price: price || 0,
-    quantity: quantity || 0,
+    price,
+    quantity,
     lastUpdated: at,
     ok: true,
   };

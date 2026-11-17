@@ -1,6 +1,27 @@
 import { getWowheadItemIdFromInput, importReagentFromWowhead } from "@/lib/modules/wowhead-service";
+import { fetchItemPricesFromAuctionHouse } from "@/lib/modules/auctionhouse-service";
 import { isWowVersion } from "@/lib/wow/versions";
 import { NextResponse, type NextRequest } from "next/server";
+
+async function addAuctionHousePrice<T extends { itemId: number; tsmPrice: number; ahPrice: number }>(
+  reagent: T,
+  version: string,
+): Promise<T> {
+  if (version !== "forever") {
+    return reagent;
+  }
+
+  const [price] = await fetchItemPricesFromAuctionHouse([reagent.itemId]);
+  if (!price?.ok) {
+    return reagent;
+  }
+
+  return {
+    ...reagent,
+    tsmPrice: price.price,
+    ahPrice: price.price,
+  };
+}
 
 export async function GET(request: NextRequest) {
   const version = request.nextUrl.searchParams.get("version")?.trim() ?? "";
@@ -17,7 +38,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const reagent = await importReagentFromWowhead(itemId, version);
+    const imported = await importReagentFromWowhead(itemId, version);
+    const reagent = await addAuctionHousePrice(imported, version);
     return NextResponse.json({ reagent });
   } catch (error) {
     return NextResponse.json(
@@ -40,7 +62,8 @@ export async function POST(request: NextRequest) {
     }
 
     const itemId = await getWowheadItemIdFromInput(query);
-    const reagent = await importReagentFromWowhead(itemId, version);
+    const imported = await importReagentFromWowhead(itemId, version);
+    const reagent = await addAuctionHousePrice(imported, version);
     return NextResponse.json({ reagent });
   } catch (error) {
     return NextResponse.json(

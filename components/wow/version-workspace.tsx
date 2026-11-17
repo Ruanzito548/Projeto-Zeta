@@ -102,7 +102,12 @@ function mergePriceEntries(existing: ReagentEntry[], incoming: ReagentEntry[]): 
 
     byId.set(entry.itemId, {
       ...entry,
-      tsmPrice: prev.tsmPrice > 0 ? prev.tsmPrice : entry.tsmPrice,
+      tsmPrice: entry.ahPrice > 0
+        ? entry.ahPrice
+        : prev.tsmPrice > 0
+          ? prev.tsmPrice
+          : entry.tsmPrice,
+      ahPrice: entry.ahPrice > 0 ? entry.ahPrice : prev.ahPrice || entry.ahPrice,
       calculatedPrice: prev.calculatedPrice ?? entry.calculatedPrice,
       source: prev.source || entry.source,
       priceSource: prev.priceSource,
