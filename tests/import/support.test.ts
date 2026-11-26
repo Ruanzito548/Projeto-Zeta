@@ -22,11 +22,15 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 describe("AuctionHouse.fyi: preço de item", () => {
   it("usa o preço e a quantidade observados no mercado", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      jsonResponse({ row: [125, 50, 1_790_683_200_000] })) as typeof fetch;
+    let requestedUrl = "";
+    globalThis.fetch = (async (input) => {
+      requestedUrl = String(input);
+      return jsonResponse({ row: [125, 50, 1_790_683_200_000] });
+    }) as typeof fetch;
 
     try {
       const [price] = await fetchItemPricesFromAuctionHouse([2589]);
+      assert.equal(requestedUrl, "https://auctionhouse.fyi/api/v1/ah/forever.pvp.horde.us/2589");
       assert.deepEqual(price, {
         itemId: 2589,
         price: 125,

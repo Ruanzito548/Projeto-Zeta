@@ -20,8 +20,7 @@ export interface AhItemPriceResult {
   ok: boolean;
 }
 
-// Default to Horde Normal for now
-const DEFAULT_MARKET: AhMarket = "forever.normal.horde.us";
+const DEFAULT_MARKET: AhMarket = "forever.pvp.horde.us";
 
 export async function fetchItemPricesFromAuctionHouse(
   itemIds: number[],

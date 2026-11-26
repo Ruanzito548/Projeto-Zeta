@@ -36,3 +36,7 @@ npm run dev
 
 - Cada usuario faz login somente com Google.
 - Os dados do sistema sao separados por usuario (UID), evitando mistura entre contas.
+
+## Precos do WoW Forever
+
+Os precos do AuctionHouse.fyi usam o mercado PvP US Horda.
